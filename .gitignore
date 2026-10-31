@@ -1,0 +1,8 @@
+*__pycache__
+*.vscode
+*.pem
+node_modules/
+dist/
+*.pem
+node_modules/
+dist/

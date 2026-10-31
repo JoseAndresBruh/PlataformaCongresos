@@ -8,8 +8,12 @@ import {
 import NotFoundView from './components/NotFoundView';
 import Search404State from './components/Search404State';
 
-// API Base (Go Backend)
-const API_BASE = 'http://localhost:8080/api/v1';
+// API Base dinámica (compatible con Vite Proxy, Localhost y Red Local Wi-Fi para móviles)
+const API_BASE = typeof window !== 'undefined' && window.location.port === '5173'
+  ? '/api/v1'
+  : (typeof window !== 'undefined' && window.location.hostname !== 'localhost'
+      ? `${window.location.protocol}//${window.location.hostname}:8080/api/v1`
+      : 'http://localhost:8080/api/v1');
 
 
 const INITIAL_EVENTOS = [
@@ -153,7 +157,7 @@ const FAQS_DATA = [
     categoria: 'COMPROBANTES',
     pregunta: '¿Qué sucede si mi comprobante fue rechazado por inconsistencia?',
     respuesta:
-      'Recibirás una notificación en el portal indicando el motivo del rechazo (ej. monto incorrecto o imagen borrosa). Podrás volver a subir un comprobante válido dentro de un nuevo plazo de 24 horas o comunicarte por la Mesa de Ayuda.',
+      'Recibirás una notificación en el portal indicando el motivo del rechazo (ej. monto incorrecto o imagen borrosa). Podrás volver a subir un comprobante válido dentro de un nuevo plazo de 24 horas o comunicarte por la Soporte Técnico.',
   },
 ];
 
@@ -214,7 +218,8 @@ export default function App() {
     if (clean === '/' || clean === '/explorar') return { view: 'explorar', path: '/explorar' };
     if (clean === '/mis-eventos' || clean === '/credenciales') return { view: 'mis_eventos', path: '/mis-eventos', role: 'ASISTENTE' };
     if (clean === '/certificados' || clean === '/validar') return { view: 'certificados', path: '/certificados', role: 'ASISTENTE' };
-    if (clean === '/admin' || clean === '/admin-kpi' || clean === '/resumen') return { view: 'admin_kpi', path: '/admin', role: 'ADMIN' };
+    if (clean === '/super-admin' || clean === '/admin-global') return { view: 'super_admin', path: '/super-admin', role: 'SUPER_ADMIN' };
+    if (clean === '/admin' || clean === '/admin-eventos' || clean === '/admin-kpi' || clean === '/resumen') return { view: 'admin_eventos', path: '/admin-eventos', role: 'ADMIN_EVENTO' };
     if (clean === '/gestion-pagos' || clean === '/finanzas' || clean === '/pagos') return { view: 'gestion_pagos', path: '/gestion-pagos', role: 'GESTION' };
     if (clean === '/checkin' || clean === '/checkin-staff' || clean === '/asistencia') return { view: 'checkin_staff', path: '/checkin', role: 'ASISTENCIA_STAFF' };
     if (clean.startsWith('/evento/')) {
@@ -242,6 +247,314 @@ export default function App() {
     }
     return 'explorar';
   });
+
+
+  // Control de Visualización de Contraseña
+  const [showLoginPassword, setShowLoginPassword] = useState(false);
+  const [showRegisterPassword, setShowRegisterPassword] = useState(false);
+
+  // Modal de Confirmación para Cerrar Sesión
+  const [showLogoutConfirmModal, setShowLogoutConfirmModal] = useState(false);
+
+  // Escáner QR de Cámara en Vivo (Compatible PC Webcam y Móviles)
+  const [cameraActive, setCameraActive] = useState(false);
+  const [cameraFacing, setCameraFacing] = useState('environment'); // 'environment' o 'user'
+  const [cameraError, setCameraError] = useState(null);
+  const [uploadedQrFileName, setUploadedQrFileName] = useState('');
+  const [availableCameras, setAvailableCameras] = useState([]);
+  const [selectedCameraId, setSelectedCameraId] = useState('');
+  const videoRef = useRef(null);
+  const scannerStreamRef = useRef(null);
+  const scanIntervalRef = useRef(null);
+
+  // Pestaña del Panel de Super Administrador: 'usuarios' | 'firma' | 'auditoria'
+  const [superAdminTab, setSuperAdminTab] = useState('usuarios');
+
+  // Usuarios del Sistema para Gestión de Roles en Super Admin
+  const [platformUsers, setPlatformUsers] = useState([
+    { id: '00000000-0000-0000-0000-000000000001', correo: 'admin@uleam.edu.ec', nombres: 'Carlos Adrián', apellidos: 'Valencia Mendoza', identificacion: '1312345678', institucion: 'Dirección DITIC / ULEAM', rol: 'SUPER_ADMIN', estado: 'ACTIVO' },
+    { id: '00000000-0000-0000-0000-000000000002', correo: 'organizador@uleam.edu.ec', nombres: 'Jandry David', apellidos: 'Fernández Cedeño', identificacion: '1314567890', institucion: 'Facultad Ciencias de la Vida y Tecnologías', rol: 'ADMIN_EVENTO', estado: 'ACTIVO' },
+    { id: '00000000-0000-0000-0000-000000000003', correo: 'gestion@uleam.edu.ec', nombres: 'José Andrés', apellidos: 'Loor Muñoz', identificacion: '1315678901', institucion: 'Dirección Financiera ULEAM', rol: 'PERSONAL_GESTION', estado: 'ACTIVO' },
+    { id: '00000000-0000-0000-0000-000000000004', correo: 'asistencia@uleam.edu.ec', nombres: 'Alan Joel', apellidos: 'Cobeña Naranjo', identificacion: '1316789012', institucion: 'Coordinación Logística de Campo', rol: 'PERSONAL_ASISTENCIA', estado: 'ACTIVO' },
+    { id: '00000000-0000-0000-0000-000000000005', correo: 'ponente@uleam.edu.ec', nombres: 'Dr. Jonny', apellidos: 'Pérez Véliz', identificacion: '1301122334', institucion: 'Investigador PhD / ULEAM', rol: 'PONENTE', estado: 'ACTIVO' },
+    { id: '00000000-0000-0000-0000-000000000006', correo: 'estudiante@uleam.edu.ec', nombres: 'Karla Jamileth', apellidos: 'Andrade Mendoza', identificacion: '1317890123', institucion: 'Ingeniería en Software', rol: 'ASISTENTE', estado: 'ACTIVO' },
+    { id: '00000000-0000-0000-0000-000000000007', correo: 'participante.externo@gmail.com', nombres: 'Javier David', apellidos: 'Jaramillo Intriago', identificacion: '1318901234', institucion: 'Univ. Técnica de Manabí (UTM)', rol: 'ASISTENTE', estado: 'ACTIVO' },
+  ]);
+  const [userSearchTerm, setUserSearchTerm] = useState('');
+  const [userRoleFilter, setUserRoleFilter] = useState('TODOS');
+
+  // Bitácora de Auditoría del Sistema
+  const [auditLogs] = useState([
+    { id: 'aud-01', accion: 'INICIO_SESION', usuario: 'admin@uleam.edu.ec', rol: 'SUPER_ADMIN', resultado: 'PERMITIDO', fecha: 'Hace 4 min', ip: '192.168.1.10' },
+    { id: 'aud-02', accion: 'AUDITORIA_PAGO_APROBADO', usuario: 'gestion@uleam.edu.ec', rol: 'PERSONAL_GESTION', resultado: 'PERMITIDO', fecha: 'Hace 12 min', ip: '192.168.1.25' },
+    { id: 'aud-03', accion: 'CHECKIN_QR_PUERTA', usuario: 'asistencia@uleam.edu.ec', rol: 'PERSONAL_ASISTENCIA', resultado: 'PERMITIDO', fecha: 'Hace 25 min', ip: '192.168.1.44' },
+    { id: 'aud-04', accion: 'DESCARGA_CERTIFICADO', usuario: 'estudiante@uleam.edu.ec', rol: 'ASISTENTE', resultado: 'PERMITIDO', fecha: 'Hace 45 min', ip: '186.42.112.5' },
+    { id: 'aud-05', accion: 'CREACION_CONGRESO', usuario: 'organizador@uleam.edu.ec', rol: 'ADMIN_EVENTO', resultado: 'PERMITIDO', fecha: 'Hace 1 hora', ip: '192.168.1.15' },
+  ]);
+
+  // Función de Audio Beep para confirmación de escaneo QR
+  const playScanBeep = (isSuccess) => {
+    try {
+      const AudioCtx = window.AudioContext || window.webkitAudioContext;
+      if (!AudioCtx) return;
+      const ctx = new AudioCtx();
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      osc.connect(gain);
+      gain.connect(ctx.destination);
+      if (isSuccess) {
+        osc.frequency.setValueAtTime(880, ctx.currentTime);
+        osc.frequency.setValueAtTime(1320, ctx.currentTime + 0.1);
+        gain.gain.setValueAtTime(0.2, ctx.currentTime);
+        gain.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + 0.3);
+        osc.start();
+        osc.stop(ctx.currentTime + 0.3);
+      } else {
+        osc.frequency.setValueAtTime(300, ctx.currentTime);
+        osc.frequency.setValueAtTime(200, ctx.currentTime + 0.12);
+        gain.gain.setValueAtTime(0.2, ctx.currentTime);
+        gain.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + 0.35);
+        osc.start();
+        osc.stop(ctx.currentTime + 0.35);
+      }
+    } catch {
+      // Audio no permitido sin gesto o no disponible
+    }
+  };
+
+  // Enumerar dispositivos de video disponibles
+  const refreshCameras = async () => {
+    if (typeof navigator !== 'undefined' && navigator.mediaDevices?.enumerateDevices) {
+      try {
+        const devices = await navigator.mediaDevices.enumerateDevices();
+        const videoDevs = devices.filter((d) => d.kind === 'videoinput');
+        setAvailableCameras(videoDevs);
+        if (videoDevs.length > 0 && !selectedCameraId) {
+          const preferred = videoDevs.find((d) => !d.label.toLowerCase().includes('virtual')) || videoDevs[0];
+          setSelectedCameraId(preferred.deviceId);
+        }
+      } catch (e) {
+        console.warn('No se pudieron enumerar dispositivos de video:', e);
+      }
+    }
+  };
+
+  useEffect(() => {
+    refreshCameras();
+  }, []);
+
+  // Métodos del Escáner QR de Cámara
+  const startQrCamera = async (targetDevId = null, facing = cameraFacing) => {
+    setCameraError(null);
+    try {
+      if (scannerStreamRef.current) {
+        scannerStreamRef.current.getTracks().forEach((t) => t.stop());
+        scannerStreamRef.current = null;
+      }
+
+      if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+        throw new Error('API_NO_DISPONIBLE');
+      }
+
+      const activeDevId = targetDevId || selectedCameraId;
+      let stream = null;
+
+      // 1. Intentar con deviceId exacto si se seleccionó una cámara específica
+      if (activeDevId) {
+        try {
+          stream = await navigator.mediaDevices.getUserMedia({
+            video: { deviceId: { exact: activeDevId } },
+          });
+        } catch {
+          try {
+            stream = await navigator.mediaDevices.getUserMedia({
+              video: { deviceId: { ideal: activeDevId } },
+            });
+          } catch {
+            // Continuar al siguiente fallback
+          }
+        }
+      }
+
+      // 2. Si no hay deviceId o falló, intentar por facingMode (móvil)
+      if (!stream) {
+        try {
+          stream = await navigator.mediaDevices.getUserMedia({
+            video: { facingMode: { ideal: facing } },
+          });
+        } catch {
+          // 3. Fallback genérico para webcams de escritorio (PC)
+          stream = await navigator.mediaDevices.getUserMedia({ video: true });
+        }
+      }
+
+      scannerStreamRef.current = stream;
+      setCameraActive(true);
+      setCameraFacing(facing);
+      if (targetDevId) setSelectedCameraId(targetDevId);
+
+      // Re-consultar dispositivos (al conceder permiso se revelan los nombres reales de las cámaras)
+      refreshCameras();
+
+      // Enlazar stream al video inmediatamente o con un breve retardo de montaje
+      setTimeout(() => {
+        if (videoRef.current && scannerStreamRef.current) {
+          videoRef.current.srcObject = scannerStreamRef.current;
+          videoRef.current.play().catch(() => {});
+        }
+      }, 60);
+
+      // Iniciar detector de códigos QR nativo si el navegador lo soporta
+      if ('BarcodeDetector' in window) {
+        const detector = new window.BarcodeDetector({ formats: ['qr_code'] });
+        if (scanIntervalRef.current) clearInterval(scanIntervalRef.current);
+        scanIntervalRef.current = setInterval(async () => {
+          if (videoRef.current && videoRef.current.readyState === videoRef.current.HAVE_ENOUGH_DATA) {
+            try {
+              const barcodes = await detector.detect(videoRef.current);
+              if (barcodes.length > 0) {
+                const code = barcodes[0].rawValue;
+                handleExecuteScan(code);
+                stopQrCamera();
+              }
+            } catch {
+              // Frame skip
+            }
+          }
+        }, 300);
+      }
+    } catch (err) {
+      console.error('Fallo al inicializar cámara:', err);
+      const isHttpMobile = typeof window !== 'undefined' && window.location.protocol === 'http:' && window.location.hostname !== 'localhost';
+      setCameraError(
+        isHttpMobile
+          ? 'Cámara bloqueada: Los dispositivos móviles exigen conexión segura (HTTPS) para encender la cámara. Ingresa desde tu móvil a: https://' + window.location.hostname + ':5173'
+          : 'No se pudo acceder a la cámara. Comprueba los permisos del navegador, que la cámara no esté ocupada por otra app (Teams, Zoom, OBS) o prueba seleccionando otra cámara en el menú.'
+      );
+      setCameraActive(false);
+    }
+  };
+
+  const stopQrCamera = () => {
+    if (scanIntervalRef.current) {
+      clearInterval(scanIntervalRef.current);
+      scanIntervalRef.current = null;
+    }
+    if (scannerStreamRef.current) {
+      scannerStreamRef.current.getTracks().forEach((t) => t.stop());
+      scannerStreamRef.current = null;
+    }
+    if (videoRef.current) {
+      videoRef.current.srcObject = null;
+    }
+    setCameraActive(false);
+  };
+
+  const toggleQrCamera = () => {
+    if (availableCameras.length > 1) {
+      const curIdx = availableCameras.findIndex((c) => c.deviceId === selectedCameraId);
+      const nextIdx = (curIdx + 1) % availableCameras.length;
+      const nextDev = availableCameras[nextIdx];
+      setSelectedCameraId(nextDev.deviceId);
+      startQrCamera(nextDev.deviceId);
+      showToast(`Cambiando a: ${nextDev.label || `Cámara ${nextIdx + 1}`}`);
+    } else {
+      const nextFacing = cameraFacing === 'environment' ? 'user' : 'environment';
+      setCameraFacing(nextFacing);
+      startQrCamera(null, nextFacing);
+    }
+  };
+
+  // Reasignar rol a usuario en Super Admin
+  const handleUserRoleChange = (userId, newRole) => {
+    setPlatformUsers((prev) =>
+      prev.map((u) => (u.id === userId ? { ...u, rol: newRole } : u))
+    );
+    const targetUser = platformUsers.find((u) => u.id === userId);
+    showToast(`Rol actualizado a ${newRole} para ${targetUser ? targetUser.nombres : 'usuario'}.`);
+  };
+
+  // Efecto reactivo para garantizar que el stream de la cámara se vincule al elemento video al montarse
+  useEffect(() => {
+    if (cameraActive && videoRef.current && scannerStreamRef.current) {
+      if (videoRef.current.srcObject !== scannerStreamRef.current) {
+        videoRef.current.srcObject = scannerStreamRef.current;
+      }
+      videoRef.current.play().catch((err) => {
+        console.warn('Fallo en reproducción de video:', err);
+      });
+    }
+  }, [cameraActive, cameraFacing]);
+
+  // Función unificada de procesamiento de Check-in
+  const handleExecuteScan = (rawCode) => {
+    const code = (rawCode || '').trim();
+    if (!code) return;
+
+    if (code.includes('ERROR') || code === '0000000000') {
+      playScanBeep(false);
+      setScanResult({
+        exito: false,
+        mensaje: 'ACCESO DENEGADO: Credencial QR o identificación no válida para este congreso.',
+      });
+    } else if (code.includes('DUPLICADO')) {
+      playScanBeep(false);
+      setScanResult({
+        exito: true,
+        advertencia: true,
+        mensaje: 'ADVERTENCIA: Asistencia previamente registrada en esta sesión.',
+        participante: 'Karla Jamileth Andrade Mendoza',
+        categoria: 'Estudiante ULEAM (Beca 100%)',
+        hora: new Date().toLocaleTimeString('es-EC'),
+      });
+    } else {
+      playScanBeep(true);
+      const isJavier = code.includes('1318901234') || code.toLowerCase().includes('javier');
+      const nombre = isJavier ? 'Javier David Jaramillo Intriago' : 'Karla Jamileth Andrade Mendoza';
+      const cat = isJavier ? 'Profesional / Externo ($25.00)' : 'Estudiante ULEAM (Beca 100%)';
+      const inst = isJavier ? 'Universidad Técnica de Manabí (UTM)' : 'ULEAM - Ingeniería en Software';
+
+      setScanResult({
+        exito: true,
+        mensaje: 'ACCESO CONCEDIDO',
+        participante: nombre,
+        categoria: cat,
+        institucion: inst,
+        hora: new Date().toLocaleTimeString('es-EC'),
+      });
+
+      setRecentCheckins((prev) => [
+        { id: Date.now(), nombre, tiempo: 'Justo ahora', estado: 'VALIDADO' },
+        ...prev,
+      ]);
+      showToast(`¡Check-in concedido!: ${nombre}`);
+    }
+  };
+
+  // Subida de imagen QR desde archivo
+  const handleQrImageUpload = (e) => {
+    const file = e.target.files && e.target.files[0];
+    if (!file) return;
+
+    const img = new Image();
+    img.src = URL.createObjectURL(file);
+    img.onload = async () => {
+      if ('BarcodeDetector' in window) {
+        try {
+          const detector = new window.BarcodeDetector({ formats: ['qr_code'] });
+          const barcodes = await detector.detect(img);
+          if (barcodes.length > 0) {
+            handleExecuteScan(barcodes[0].rawValue);
+            return;
+          }
+        } catch {
+          // Fallback
+        }
+      }
+      // Simulación exitosa al subir imagen válida de credencial
+      handleExecuteScan('ULEAM-QR-KARLA-1317890123');
+    };
+  };
 
 
   // Configuración de Autoridad y Firma Digital para Certificados (SuperAdmin)
@@ -546,7 +859,8 @@ export default function App() {
       if (view === 'explorar') targetPath = '/explorar';
       else if (view === 'mis_eventos') targetPath = '/mis-eventos';
       else if (view === 'certificados') targetPath = '/certificados';
-      else if (view === 'admin_kpi') targetPath = '/admin';
+      else if (view === 'super_admin') targetPath = '/super-admin';
+      else if (view === 'admin_eventos' || view === 'admin_kpi') targetPath = '/admin-eventos';
       else if (view === 'gestion_pagos') targetPath = '/gestion-pagos';
       else if (view === 'checkin_staff') targetPath = '/checkin';
       else if (view === 'not_found') targetPath = '/404';
@@ -978,7 +1292,7 @@ export default function App() {
 
       const data = await res.json();
       if (!res.ok) {
-        throw new Error(data.error || 'Credenciales inválidas en el servidor PostgreSQL.');
+        throw new Error(data.error || 'Credenciales incorrectas. Verifique su correo y contraseña.');
       }
 
       // Guardar token JWT y sesión
@@ -988,9 +1302,12 @@ export default function App() {
 
       // Sincronizar Rol según usuario
       const rol = (data.usuario.rol || 'ASISTENTE').toUpperCase();
-      if (rol.includes('ADMIN')) {
-        setCurrentRole('ADMIN');
-        setCurrentView('admin_kpi');
+      if (rol.includes('SUPER')) {
+        setCurrentRole('SUPER_ADMIN');
+        setCurrentView('super_admin');
+      } else if (rol.includes('ADMIN')) {
+        setCurrentRole('ADMIN_EVENTO');
+        setCurrentView('admin_eventos');
       } else if (rol.includes('GESTION')) {
         setCurrentRole('GESTION');
         setCurrentView('gestion_pagos');
@@ -1003,7 +1320,7 @@ export default function App() {
       }
 
       setShowAuthModal(false);
-      showToast(`¡Bienvenido, ${data.usuario.nombres}! Sesión iniciada con éxito (PostgreSQL).`);
+      showToast(`¡Bienvenido, ${data.usuario.nombres}! Sesión iniciada con éxito.`);
     } catch (err) {
       setAuthError(err.message);
     } finally {
@@ -1025,10 +1342,10 @@ export default function App() {
 
       const data = await res.json();
       if (!res.ok) {
-        throw new Error(data.error || 'Error al registrar usuario en la base de datos PostgreSQL.');
+        throw new Error(data.error || 'Error al registrar usuario. Verifique los datos ingresados.');
       }
 
-      showToast('¡Cuenta creada con éxito en PostgreSQL! Iniciando sesión...');
+      showToast('¡Cuenta creada con éxito! Iniciando sesión...');
       // Iniciar sesión automáticamente
       setLoginForm({ correo: registerForm.correo, contrasena: registerForm.contrasena });
       const loginRes = await fetch(`${API_BASE}/auth/login`, {
@@ -1080,7 +1397,7 @@ export default function App() {
         new Date().toLocaleTimeString('es-EC', { hour: '2-digit', minute: '2-digit' }),
       prioridad: ticketForm.prioridad,
       respuesta:
-        'Su requerimiento fue recibido por la Mesa de Ayuda de la Facultad. Un agente especializado le responderá formalmente en menos de 4 horas hábiles.',
+        'Su requerimiento fue recibido por la Equipo de Soporte de la Facultad. Un agente especializado le responderá formalmente en menos de 4 horas hábiles.',
     };
     setTicketsList([newTicket, ...ticketsList]);
     setTicketForm({
@@ -1134,11 +1451,18 @@ export default function App() {
               Portal Participante
             </button>
             <button
-              className={`role-pill-btn ${currentRole === 'ADMIN' ? 'active' : ''}`}
-              onClick={() => { setCurrentRole('ADMIN'); navigateTo('admin_kpi', '/admin'); }}
+              className={`role-pill-btn ${currentRole === 'SUPER_ADMIN' ? 'active' : ''}`}
+              onClick={() => { setCurrentRole('SUPER_ADMIN'); navigateTo('super_admin', '/super-admin'); }}
             >
-              <span className="material-symbols-outlined" style={{ fontSize: '16px' }}>admin_panel_settings</span>
-              Panel SuperAdmin / Eventos
+              <span className="material-symbols-outlined" style={{ fontSize: '16px' }}>shield</span>
+              Panel SuperAdmin
+            </button>
+            <button
+              className={`role-pill-btn ${currentRole === 'ADMIN_EVENTO' ? 'active' : ''}`}
+              onClick={() => { setCurrentRole('ADMIN_EVENTO'); navigateTo('admin_eventos', '/admin-eventos'); }}
+            >
+              <span className="material-symbols-outlined" style={{ fontSize: '16px' }}>event</span>
+              Gestión de Eventos
             </button>
             <button
               className={`role-pill-btn ${currentRole === 'GESTION' ? 'active' : ''}`}
@@ -1181,21 +1505,18 @@ export default function App() {
               <>
                 <button
                   className={`btn btn-outline btn-sm ${currentView === 'explorar' ? 'btn-primary' : ''}`}
-                  style={{ border: currentView === 'explorar' ? 'none' : 'none' }}
                   onClick={() => navigateTo('explorar', '/explorar')}
                 >
                   <span className="material-symbols-outlined">explore</span> Explorar
                 </button>
                 <button
                   className={`btn btn-outline btn-sm ${currentView === 'mis_eventos' ? 'btn-primary' : ''}`}
-                  style={{ border: currentView === 'mis_eventos' ? 'none' : 'none' }}
                   onClick={() => navigateTo('mis_eventos', '/mis-eventos')}
                 >
                   <span className="material-symbols-outlined">badge</span> Mis Credenciales
                 </button>
                 <button
                   className={`btn btn-outline btn-sm ${currentView === 'certificados' ? 'btn-primary' : ''}`}
-                  style={{ border: currentView === 'certificados' ? 'none' : 'none' }}
                   onClick={() => navigateTo('certificados', '/certificados')}
                 >
                   <span className="material-symbols-outlined">workspace_premium</span> Certificados
@@ -1203,14 +1524,36 @@ export default function App() {
               </>
             )}
 
-            {currentRole === 'ADMIN' && (
+            {currentRole === 'SUPER_ADMIN' && (
               <>
                 <button
-                  className={`btn btn-outline btn-sm ${currentView === 'admin_kpi' ? 'btn-primary' : ''}`}
-                  style={{ border: currentView === 'admin_kpi' ? 'none' : 'none' }}
-                  onClick={() => navigateTo('admin_kpi', '/admin')}
+                  className={`btn btn-outline btn-sm ${currentView === 'super_admin' ? 'btn-primary' : ''}`}
+                  onClick={() => navigateTo('super_admin', '/super-admin')}
                 >
-                  <span className="material-symbols-outlined">dashboard</span> Resumen Ejecutivo
+                  <span className="material-symbols-outlined">shield</span> Panel SuperAdmin
+                </button>
+                <button
+                  className={`btn btn-outline btn-sm ${currentView === 'admin_eventos' ? 'btn-primary' : ''}`}
+                  onClick={() => navigateTo('admin_eventos', '/admin-eventos')}
+                >
+                  <span className="material-symbols-outlined">event</span> Eventos
+                </button>
+                <button
+                  className="btn btn-outline btn-sm"
+                  onClick={() => navigateTo('explorar', '/explorar')}
+                >
+                  <span className="material-symbols-outlined">explore</span> Catálogo
+                </button>
+              </>
+            )}
+
+            {currentRole === 'ADMIN_EVENTO' && (
+              <>
+                <button
+                  className={`btn btn-outline btn-sm ${currentView === 'admin_eventos' ? 'btn-primary' : ''}`}
+                  onClick={() => navigateTo('admin_eventos', '/admin-eventos')}
+                >
+                  <span className="material-symbols-outlined">dashboard</span> Panel Eventos
                 </button>
                 <button
                   className="btn btn-urgent btn-sm"
@@ -1218,31 +1561,64 @@ export default function App() {
                 >
                   <span className="material-symbols-outlined">add_circle</span> Crear Evento
                 </button>
+                <button
+                  className="btn btn-outline btn-sm"
+                  onClick={() => navigateTo('explorar', '/explorar')}
+                >
+                  <span className="material-symbols-outlined">explore</span> Catálogo
+                </button>
               </>
             )}
 
             {currentRole === 'GESTION' && (
-              <button
-                className={`btn btn-outline btn-sm ${currentView === 'gestion_pagos' ? 'btn-primary' : ''}`}
-                style={{ border: currentView === 'gestion_pagos' ? 'none' : 'none' }}
-                onClick={() => navigateTo('gestion_pagos', '/gestion-pagos')}
-              >
-                <span className="material-symbols-outlined">receipt_long</span> Mesa de Finanzas
-              </button>
+              <>
+                <button
+                  className={`btn btn-sm ${currentView === 'gestion_pagos' ? 'btn-primary' : 'btn-outline'}`}
+                  style={{ display: 'flex', alignItems: 'center', gap: '6px' }}
+                  onClick={() => navigateTo('gestion_pagos', '/gestion-pagos')}
+                >
+                  <span className="material-symbols-outlined">receipt_long</span> Mesa de Finanzas (24h SLA)
+                </button>
+                <button
+                  className="btn btn-outline btn-sm"
+                  onClick={() => navigateTo('explorar', '/explorar')}
+                >
+                  <span className="material-symbols-outlined">explore</span> Catálogo
+                </button>
+              </>
             )}
 
             {currentRole === 'ASISTENCIA_STAFF' && (
-              <button
-                className={`btn btn-outline btn-sm ${currentView === 'checkin_staff' ? 'btn-primary' : ''}`}
-                style={{ border: currentView === 'checkin_staff' ? 'none' : 'none' }}
-                onClick={() => navigateTo('checkin_staff', '/checkin')}
-              >
-                <span className="material-symbols-outlined">qr_code_scanner</span> Escáner Puerta
-              </button>
+              <>
+                <button
+                  className={`btn btn-sm ${currentView === 'checkin_staff' ? 'btn-primary' : 'btn-outline'}`}
+                  style={{ display: 'flex', alignItems: 'center', gap: '6px' }}
+                  onClick={() => navigateTo('checkin_staff', '/checkin')}
+                >
+                  <span className="material-symbols-outlined">qr_code_scanner</span> Escáner Puerta (QR)
+                </button>
+                <button
+                  className="btn btn-outline btn-sm"
+                  onClick={() => navigateTo('explorar', '/explorar')}
+                >
+                  <span className="material-symbols-outlined">explore</span> Catálogo
+                </button>
+              </>
             )}
 
+            {/* Botón Permanente de Soporte Institucional */}
+            <button
+              className="btn btn-outline btn-sm"
+              onClick={() => {
+                setHelpDeskTab('faq');
+                setShowHelpDeskModal(true);
+              }}
+              title="Soporte y Atención"
+            >
+              <span className="material-symbols-outlined">support_agent</span> Soporte
+            </button>
 
-            {/* Perfil del Usuario y Acceso PostgreSQL */}
+            {/* Perfil del Usuario */}
             <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginLeft: '6px' }}>
               {currentUser ? (
                 <div
@@ -1276,23 +1652,23 @@ export default function App() {
                     <strong style={{ color: 'var(--primary-dark)' }}>{currentUser.nombres}</strong>
                     <span style={{ color: 'var(--color-success)', fontWeight: 600, display: 'flex', alignItems: 'center', gap: '4px' }}>
                       <span style={{ width: '6px', height: '6px', borderRadius: '50%', background: 'var(--color-success)', display: 'inline-block' }}></span>
-                      {currentUser.rol || currentRole} (PG Auth)
+                      {currentUser.rol || currentRole}
                     </span>
                   </div>
                   <button
-                    onClick={handleLogout}
-                    title="Cerrar sesión"
+                    onClick={() => setShowLogoutConfirmModal(true)}
+                    title="Cerrar sesión con confirmación"
                     style={{
                       background: 'none',
                       border: 'none',
                       cursor: 'pointer',
-                      color: 'var(--text-muted)',
+                      color: 'var(--color-error)',
                       display: 'flex',
                       alignItems: 'center',
-                      padding: '2px',
+                      padding: '4px',
                     }}
                   >
-                    <span className="material-symbols-outlined" style={{ fontSize: '18px' }}>logout</span>
+                    <span className="material-symbols-outlined" style={{ fontSize: '20px' }}>logout</span>
                   </button>
                 </div>
               ) : (
@@ -1393,7 +1769,7 @@ export default function App() {
                     {currentUser.correo}
                   </div>
                   <span className="chip chip-success" style={{ fontSize: '0.65rem', marginTop: '4px' }}>
-                    ● {currentUser.rol || currentRole} (PG Auth)
+                    ● {currentUser.rol || currentRole}
                   </span>
                 </div>
                 <button
@@ -1573,7 +1949,7 @@ export default function App() {
                 }}
               >
                 <span className="material-symbols-outlined" style={{ color: 'var(--secondary)' }}>support_agent</span>
-                <span>Mesa de Ayuda (Soporte)</span>
+                <span>Soporte</span>
               </button>
               <button
                 className="drawer-nav-item"
@@ -2110,27 +2486,389 @@ export default function App() {
       )}
 
       {/* ============================================================== */}
-      {/* VISTA 4: PANEL SUPERADMIN / EVENTOS (Resumen Ejecutivo)        */}
+      {/* VISTA 4A: PANEL EXCLUSIVO SUPERADMIN (Infraestructura y Roles)  */}
       {/* ============================================================== */}
-      {currentView === 'admin_kpi' && (
+      {currentView === 'super_admin' && (
+        <main className="main-container" style={{ padding: '40px 24px' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '28px', flexWrap: 'wrap', gap: '16px' }}>
+            <div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                <span className="material-symbols-outlined" style={{ color: 'var(--primary-container)', fontSize: '32px' }}>shield</span>
+                <h2 className="headline-large" style={{ margin: 0 }}>Panel de Super Administrador</h2>
+              </div>
+              <p className="body-regular" style={{ marginTop: '4px' }}>
+                Gobernanza global de la plataforma ULEAM-EVENTOS, asignación de roles, auditoría y sellos institucionales.
+              </p>
+            </div>
+            <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
+              <button
+                className={`btn btn-sm ${superAdminTab === 'usuarios' ? 'btn-primary' : 'btn-outline'}`}
+                onClick={() => setSuperAdminTab('usuarios')}
+              >
+                <span className="material-symbols-outlined">manage_accounts</span> Usuarios & Roles
+              </button>
+              <button
+                className={`btn btn-sm ${superAdminTab === 'firma' ? 'btn-primary' : 'btn-outline'}`}
+                onClick={() => setSuperAdminTab('firma')}
+              >
+                <span className="material-symbols-outlined">draw</span> Firma & Sellos
+              </button>
+              <button
+                className={`btn btn-sm ${superAdminTab === 'auditoria' ? 'btn-primary' : 'btn-outline'}`}
+                onClick={() => setSuperAdminTab('auditoria')}
+              >
+                <span className="material-symbols-outlined">security</span> Auditoría
+              </button>
+            </div>
+          </div>
+
+          {/* Tarjetas de Métricas Globales del SuperAdmin */}
+          <div className="kpi-grid-auto" style={{ marginBottom: '32px' }}>
+            <div style={{ background: '#FFFFFF', padding: '22px', borderRadius: 'var(--radius-lg)', boxShadow: 'var(--shadow-level-1)', borderLeft: '4px solid var(--primary-container)' }}>
+              <span style={{ fontSize: '0.85rem', color: 'var(--text-muted)' }}>Usuarios Registrados</span>
+              <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', marginTop: '6px' }}>
+                <span style={{ fontSize: '2rem', fontWeight: 800, color: 'var(--primary-dark)' }}>{platformUsers.length}</span>
+                <span style={{ color: 'var(--color-success)', fontWeight: 600, fontSize: '0.82rem' }}>Activos</span>
+              </div>
+            </div>
+            <div style={{ background: '#FFFFFF', padding: '22px', borderRadius: 'var(--radius-lg)', boxShadow: 'var(--shadow-level-1)', borderLeft: '4px solid var(--secondary)' }}>
+              <span style={{ fontSize: '0.85rem', color: 'var(--text-muted)' }}>Roles Definidos</span>
+              <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', marginTop: '6px' }}>
+                <span style={{ fontSize: '2rem', fontWeight: 800, color: 'var(--primary-dark)' }}>5</span>
+                <span style={{ color: 'var(--primary-container)', fontWeight: 600, fontSize: '0.82rem' }}>RBAC Activo</span>
+              </div>
+            </div>
+            <div style={{ background: '#FFFFFF', padding: '22px', borderRadius: 'var(--radius-lg)', boxShadow: 'var(--shadow-level-1)', borderLeft: '4px solid #002F6C' }}>
+              <span style={{ fontSize: '0.85rem', color: 'var(--text-muted)' }}>Congresos Totales</span>
+              <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', marginTop: '6px' }}>
+                <span style={{ fontSize: '2rem', fontWeight: 800, color: 'var(--primary-dark)' }}>{eventos.length}</span>
+                <span style={{ color: 'var(--color-success)', fontWeight: 600, fontSize: '0.82rem' }}>Catálogo ULEAM</span>
+              </div>
+            </div>
+            <div style={{ background: '#FFFFFF', padding: '22px', borderRadius: 'var(--radius-lg)', boxShadow: 'var(--shadow-level-1)', borderLeft: '4px solid var(--color-success)' }}>
+              <span style={{ fontSize: '0.85rem', color: 'var(--text-muted)' }}>Estado del Sistema</span>
+              <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', marginTop: '6px' }}>
+                <span style={{ fontSize: '1.4rem', fontWeight: 800, color: 'var(--color-success)' }}>100% Online</span>
+                <span style={{ color: 'var(--color-success)', fontWeight: 600, fontSize: '0.82rem' }}>Operacional</span>
+              </div>
+            </div>
+          </div>
+
+          {/* TAB 1: GESTIÓN DE USUARIOS Y ASIGNACIÓN DE ROLES */}
+          {superAdminTab === 'usuarios' && (
+            <div style={{ background: '#FFFFFF', padding: '28px', borderRadius: 'var(--radius-xl)', boxShadow: 'var(--shadow-level-1)' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px', flexWrap: 'wrap', gap: '14px' }}>
+                <div>
+                  <h3 style={{ fontSize: '1.2rem', color: 'var(--primary-dark)', margin: 0 }}>
+                    Control de Usuarios y Asignación de Roles
+                  </h3>
+                  <p className="body-regular" style={{ fontSize: '0.85rem', color: 'var(--text-muted)', marginTop: '2px' }}>
+                    Reasigna roles del sistema en tiempo real con efecto inmediato para cada usuario institucional o externo.
+                  </p>
+                </div>
+                <div style={{ display: 'flex', gap: '10px', alignItems: 'center', flexWrap: 'wrap' }}>
+                  <input
+                    type="text"
+                    className="input-control"
+                    style={{ width: '240px', padding: '8px 12px', fontSize: '0.85rem' }}
+                    placeholder="Buscar por nombre o correo..."
+                    value={userSearchTerm}
+                    onChange={(e) => setUserSearchTerm(e.target.value)}
+                  />
+                  <select
+                    className="input-control"
+                    style={{ width: '160px', padding: '8px 10px', fontSize: '0.85rem' }}
+                    value={userRoleFilter}
+                    onChange={(e) => setUserRoleFilter(e.target.value)}
+                  >
+                    <option value="TODOS">Todos los Roles</option>
+                    <option value="SUPER_ADMIN">SuperAdmin</option>
+                    <option value="ADMIN_EVENTO">Admin Evento</option>
+                    <option value="PERSONAL_GESTION">Gestión</option>
+                    <option value="PERSONAL_ASISTENCIA">Asistencia</option>
+                    <option value="ASISTENTE">Asistente</option>
+                  </select>
+                </div>
+              </div>
+
+              <div className="table-responsive-wrapper">
+                <table style={{ width: '100%', minWidth: '750px', borderCollapse: 'collapse', fontSize: '0.88rem' }}>
+                  <thead style={{ background: 'var(--surface-container)', color: 'var(--primary-dark)' }}>
+                    <tr>
+                      <th style={{ padding: '12px 16px', textAlign: 'left' }}>Usuario</th>
+                      <th style={{ padding: '12px 16px', textAlign: 'left' }}>Identificación</th>
+                      <th style={{ padding: '12px 16px', textAlign: 'left' }}>Institución / Facultad</th>
+                      <th style={{ padding: '12px 16px', textAlign: 'left' }}>Rol Asignado</th>
+                      <th style={{ padding: '12px 16px', textAlign: 'center' }}>Acción de Cambio</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {platformUsers
+                      .filter((u) => {
+                        const matchText = (u.nombres + ' ' + u.apellidos + ' ' + u.correo + ' ' + u.identificacion)
+                          .toLowerCase()
+                          .includes(userSearchTerm.toLowerCase());
+                        const matchRole = userRoleFilter === 'TODOS' || u.rol === userRoleFilter;
+                        return matchText && matchRole;
+                      })
+                      .map((u) => (
+                        <tr key={u.id} style={{ borderBottom: '1px solid rgba(0, 47, 108, 0.08)' }}>
+                          <td style={{ padding: '14px 16px' }}>
+                            <strong style={{ display: 'block', color: 'var(--primary-dark)' }}>{u.nombres} {u.apellidos}</strong>
+                            <span style={{ fontSize: '0.78rem', color: 'var(--text-muted)' }}>{u.correo}</span>
+                          </td>
+                          <td style={{ padding: '14px 16px' }}>{u.identificacion}</td>
+                          <td style={{ padding: '14px 16px' }}>{u.institucion}</td>
+                          <td style={{ padding: '14px 16px' }}>
+                            <span className={`chip ${
+                              u.rol === 'SUPER_ADMIN' ? 'chip-primary' :
+                              u.rol === 'ADMIN_EVENTO' ? 'chip-urgent' :
+                              u.rol === 'PERSONAL_GESTION' ? 'chip-alert' :
+                              u.rol === 'PERSONAL_ASISTENCIA' ? 'chip-success' : 'chip-primary'
+                            }`}>
+                              {u.rol}
+                            </span>
+                          </td>
+                          <td style={{ padding: '14px 16px', textAlign: 'center' }}>
+                            <select
+                              value={u.rol}
+                              onChange={(e) => handleUserRoleChange(u.id, e.target.value)}
+                              style={{
+                                padding: '6px 10px',
+                                borderRadius: 'var(--radius-sm)',
+                                border: '1px solid var(--primary-container)',
+                                background: '#FFFFFF',
+                                fontSize: '0.82rem',
+                                fontWeight: 600,
+                                color: 'var(--primary-dark)',
+                                cursor: 'pointer',
+                              }}
+                            >
+                              <option value="SUPER_ADMIN">SUPER_ADMIN</option>
+                              <option value="ADMIN_EVENTO">ADMIN_EVENTO</option>
+                              <option value="PERSONAL_GESTION">PERSONAL_GESTION</option>
+                              <option value="PERSONAL_ASISTENCIA">PERSONAL_ASISTENCIA</option>
+                              <option value="ASISTENTE">ASISTENTE</option>
+                            </select>
+                          </td>
+                        </tr>
+                      ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          )}
+
+          {/* TAB 2: FIRMA DIGITAL Y SELLOS OFICIALES DE RECTORADO */}
+          {superAdminTab === 'firma' && (
+            <div style={{ background: '#FFFFFF', padding: '32px', borderRadius: 'var(--radius-lg)', boxShadow: 'var(--shadow-level-1)' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '24px', flexWrap: 'wrap', gap: '16px' }}>
+                <div>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                    <span className="material-symbols-outlined" style={{ color: 'var(--primary-container)', fontSize: '28px' }}>draw</span>
+                    <h3 style={{ fontSize: '1.35rem', color: 'var(--primary-dark)', margin: 0 }}>Firma Digital y Sellos Oficiales de Rectorado</h3>
+                  </div>
+                  <p className="body-regular" style={{ marginTop: '4px' }}>
+                    Configuración de la autoridad que avala los certificados y diplomas emitidos en la plataforma ULEAM.
+                  </p>
+                </div>
+                <button className="btn btn-outline btn-sm" onClick={resetDefaultSignature}>
+                  <span className="material-symbols-outlined">restart_alt</span> Restaurar Valores Institucionales
+                </button>
+              </div>
+
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 320px), 1fr))', gap: '32px' }}>
+                <div>
+                  <h4 style={{ fontSize: '1rem', color: 'var(--primary-dark)', marginBottom: '16px', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                    <span className="material-symbols-outlined" style={{ fontSize: '18px' }}>badge</span> Datos de la Máxima Autoridad
+                  </h4>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
+                    <div>
+                      <label style={{ display: 'block', fontSize: '0.85rem', fontWeight: 600, marginBottom: '6px' }}>Nombre Titular:</label>
+                      <input
+                        type="text"
+                        className="input-field"
+                        style={{ width: '100%' }}
+                        value={authorityConfig.nombre}
+                        onChange={(e) => updateAuthorityConfig({ ...authorityConfig, nombre: e.target.value })}
+                        placeholder="Ej. Dr. Marcos Zambrano Zambrano, PhD."
+                      />
+                    </div>
+                    <div>
+                      <label style={{ display: 'block', fontSize: '0.85rem', fontWeight: 600, marginBottom: '6px' }}>Cargo Institucional:</label>
+                      <input
+                        type="text"
+                        className="input-field"
+                        style={{ width: '100%' }}
+                        value={authorityConfig.cargo}
+                        onChange={(e) => updateAuthorityConfig({ ...authorityConfig, cargo: e.target.value })}
+                        placeholder="Ej. Rector Institucional ULEAM"
+                      />
+                    </div>
+                    <div>
+                      <label style={{ display: 'block', fontSize: '0.85rem', fontWeight: 600, marginBottom: '6px' }}>Resolución Aprobatoria:</label>
+                      <input
+                        type="text"
+                        className="input-field"
+                        style={{ width: '100%' }}
+                        value={authorityConfig.resolucion}
+                        onChange={(e) => updateAuthorityConfig({ ...authorityConfig, resolucion: e.target.value })}
+                        placeholder="Ej. Resolución H.C.U. No. 042-CU-ULEAM-2026"
+                      />
+                    </div>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginTop: '6px' }}>
+                      <input
+                        type="checkbox"
+                        id="selloActivo"
+                        checked={authorityConfig.selloActivo}
+                        onChange={(e) => updateAuthorityConfig({ ...authorityConfig, selloActivo: e.target.checked })}
+                        style={{ width: '18px', height: '18px', accentColor: 'var(--primary-container)', cursor: 'pointer' }}
+                      />
+                      <label htmlFor="selloActivo" style={{ fontSize: '0.88rem', fontWeight: 600, cursor: 'pointer' }}>
+                        Incorporar Sello Oficial Institucional (Manta - Ecuador)
+                      </label>
+                    </div>
+                  </div>
+                  <div style={{ marginTop: '20px', padding: '16px', background: 'var(--surface-bg)', borderRadius: 'var(--radius-md)', border: '1px dashed #002F6C' }}>
+                    <label style={{ display: 'block', fontSize: '0.88rem', fontWeight: 700, marginBottom: '6px', color: 'var(--primary-dark)' }}>
+                      Subir Imagen de Firma Oficial (PNG con fondo transparente)
+                    </label>
+                    <input type="file" accept="image/png,image/jpeg,image/webp" onChange={handleSignatureUpload} style={{ fontSize: '0.85rem' }} />
+                  </div>
+                </div>
+
+                <div>
+                  <h4 style={{ fontSize: '1rem', color: 'var(--primary-dark)', marginBottom: '16px', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                    <span className="material-symbols-outlined" style={{ fontSize: '18px' }}>gesture</span> Dibujar Trazo Manual
+                  </h4>
+                  <div style={{ background: '#FAF9F6', border: '2px dashed #CBD5E1', borderRadius: 'var(--radius-md)', padding: '10px', textAlign: 'center' }}>
+                    <canvas
+                      ref={sigCanvasRef}
+                      width={380}
+                      height={140}
+                      style={{ background: '#FFFFFF', border: '1px solid #E2E8F0', borderRadius: '6px', cursor: 'crosshair', display: 'block', margin: '0 auto', touchAction: 'none', maxWidth: '100%' }}
+                      onMouseDown={startDrawingSig}
+                      onMouseMove={drawSig}
+                      onMouseUp={stopDrawingSig}
+                      onMouseLeave={stopDrawingSig}
+                      onTouchStart={startDrawingSig}
+                      onTouchMove={drawSig}
+                      onTouchEnd={stopDrawingSig}
+                    />
+                    <div style={{ display: 'flex', justifyContent: 'center', gap: '10px', marginTop: '12px' }}>
+                      <button className="btn btn-outline btn-sm" onClick={clearSignatureCanvas}>
+                        <span className="material-symbols-outlined">delete</span> Limpiar
+                      </button>
+                      <button className="btn btn-primary btn-sm" onClick={saveDrawnSignature}>
+                        <span className="material-symbols-outlined">save</span> Guardar Trazo
+                      </button>
+                    </div>
+                  </div>
+
+                  <div style={{ marginTop: '16px', padding: '16px', background: '#FFFFFF', border: '1px solid #E2E8F0', borderRadius: 'var(--radius-md)', textAlign: 'center' }}>
+                    <span style={{ fontSize: '0.76rem', color: 'var(--text-muted)', fontWeight: 600, display: 'block', marginBottom: '8px' }}>
+                      VISTA PREVIA DE FIRMA EN CERTIFICADOS:
+                    </span>
+                    <div style={{ height: '55px', display: 'flex', alignItems: 'flex-end', justifyContent: 'center', marginBottom: '4px' }}>
+                      {authorityConfig.firmaUrl ? (
+                        <img src={authorityConfig.firmaUrl} alt="Firma actual" style={{ maxHeight: '55px', maxWidth: '190px', objectFit: 'contain' }} />
+                      ) : (
+                        <div style={{ fontFamily: 'Brush Script MT, cursive', fontSize: '1.8rem', color: '#002F6C' }}>Marcos Zambrano Z.</div>
+                      )}
+                    </div>
+                    <div style={{ width: '200px', height: '1.5px', background: '#002F6C', margin: '0 auto 6px' }}></div>
+                    <strong style={{ fontSize: '0.88rem', color: '#002F6C', display: 'block' }}>{authorityConfig.nombre}</strong>
+                    <span style={{ fontSize: '0.74rem', color: '#C59B27', fontWeight: 600, display: 'block' }}>{authorityConfig.cargo}</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* TAB 3: BITÁCORA DE AUDITORÍA Y SEGURIDAD */}
+          {superAdminTab === 'auditoria' && (
+            <div style={{ background: '#FFFFFF', padding: '28px', borderRadius: 'var(--radius-xl)', boxShadow: 'var(--shadow-level-1)' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px', flexWrap: 'wrap', gap: '12px' }}>
+                <div>
+                  <h3 style={{ fontSize: '1.2rem', color: 'var(--primary-dark)', margin: 0 }}>
+                    Bitácora de Auditoría del Sistema
+                  </h3>
+                  <p className="body-regular" style={{ fontSize: '0.85rem', color: 'var(--text-muted)', marginTop: '2px' }}>
+                    Registro inmutable de accesos, operaciones financieras, check-ins y emisiones oficiales.
+                  </p>
+                </div>
+                <button className="btn btn-outline btn-sm" onClick={() => showToast('Bitácora sincronizada con registros en tiempo real.')}>
+                  <span className="material-symbols-outlined">refresh</span> Actualizar Logs
+                </button>
+              </div>
+
+              <div className="table-responsive-wrapper">
+                <table style={{ width: '100%', minWidth: '700px', borderCollapse: 'collapse', fontSize: '0.88rem' }}>
+                  <thead style={{ background: 'var(--surface-container)', color: 'var(--primary-dark)' }}>
+                    <tr>
+                      <th style={{ padding: '12px 16px', textAlign: 'left' }}>Acción</th>
+                      <th style={{ padding: '12px 16px', textAlign: 'left' }}>Usuario</th>
+                      <th style={{ padding: '12px 16px', textAlign: 'left' }}>Rol</th>
+                      <th style={{ padding: '12px 16px', textAlign: 'left' }}>IP Origen</th>
+                      <th style={{ padding: '12px 16px', textAlign: 'left' }}>Fecha</th>
+                      <th style={{ padding: '12px 16px', textAlign: 'center' }}>Resultado</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {auditLogs.map((log) => (
+                      <tr key={log.id} style={{ borderBottom: '1px solid rgba(0, 47, 108, 0.08)' }}>
+                        <td style={{ padding: '12px 16px', fontWeight: 600, color: 'var(--primary-dark)' }}>{log.accion}</td>
+                        <td style={{ padding: '12px 16px' }}>{log.usuario}</td>
+                        <td style={{ padding: '12px 16px' }}>
+                          <span className="chip chip-primary" style={{ fontSize: '0.75rem' }}>{log.rol}</span>
+                        </td>
+                        <td style={{ padding: '12px 16px', fontFamily: 'monospace' }}>{log.ip}</td>
+                        <td style={{ padding: '12px 16px', color: 'var(--text-muted)' }}>{log.fecha}</td>
+                        <td style={{ padding: '12px 16px', textAlign: 'center' }}>
+                          <span className="chip chip-success" style={{ fontSize: '0.75rem' }}>{log.resultado}</span>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          )}
+        </main>
+      )}
+
+      {/* ============================================================== */}
+      {/* VISTA 4B: PANEL EXCLUSIVO ADMINISTRADOR DE EVENTOS             */}
+      {/* ============================================================== */}
+      {currentView === 'admin_eventos' && (
         <main className="main-container" style={{ padding: '40px 24px' }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '32px', flexWrap: 'wrap', gap: '16px' }}>
             <div>
-              <h2 className="headline-large">Resumen Ejecutivo y Analítica Institucional</h2>
-              <p className="body-regular">Monitoreo en tiempo real de congresos, aforo y estado operacional.</p>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                <span className="material-symbols-outlined" style={{ color: 'var(--primary-container)', fontSize: '32px' }}>event</span>
+                <h2 className="headline-large" style={{ margin: 0 }}>Gestión y Coordinación de Eventos Académicos</h2>
+              </div>
+              <p className="body-regular" style={{ marginTop: '4px' }}>
+                Planificación de conferencias, cronogramas, cupos de aforo, ponentes y métricas de participación.
+              </p>
             </div>
-            <button
-              className="btn btn-urgent"
-              onClick={() => setShowCreateEventModal(true)}
-            >
-              <span className="material-symbols-outlined">add_circle</span> Crear Nuevo Evento
-            </button>
+            <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
+              <button className="btn btn-outline btn-sm" onClick={handleExportCSV}>
+                <span className="material-symbols-outlined">table_view</span> Exportar Nómina Excel
+              </button>
+              <button
+                className="btn btn-urgent"
+                onClick={() => setShowCreateEventModal(true)}
+              >
+                <span className="material-symbols-outlined">add_circle</span> Crear Nuevo Evento
+              </button>
+            </div>
           </div>
 
-          {/* Tarjetas KPI */}
+          {/* Tarjetas KPI de Eventos */}
           <div className="kpi-grid-auto" style={{ marginBottom: '32px' }}>
             <div style={{ background: '#FFFFFF', padding: '24px', borderRadius: 'var(--radius-lg)', boxShadow: 'var(--shadow-level-1)', borderLeft: '4px solid var(--primary-container)' }}>
-              <span style={{ fontSize: '0.85rem', color: 'var(--text-muted)' }}>Eventos en Sistema</span>
+              <span style={{ fontSize: '0.85rem', color: 'var(--text-muted)' }}>Eventos Activos</span>
               <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', marginTop: '8px' }}>
                 <span style={{ fontSize: '2.2rem', fontWeight: 800, color: 'var(--primary-dark)' }}>{eventos.length}</span>
                 <span style={{ color: 'var(--color-success)', fontWeight: 600, fontSize: '0.85rem' }}>+12% este mes</span>
@@ -2138,10 +2876,10 @@ export default function App() {
             </div>
 
             <div style={{ background: '#FFFFFF', padding: '24px', borderRadius: 'var(--radius-lg)', boxShadow: 'var(--shadow-level-1)', borderLeft: '4px solid #002F6C' }}>
-              <span style={{ fontSize: '0.85rem', color: 'var(--text-muted)' }}>Participantes Registrados</span>
+              <span style={{ fontSize: '0.85rem', color: 'var(--text-muted)' }}>Participantes Inscritos</span>
               <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', marginTop: '8px' }}>
                 <span style={{ fontSize: '2.2rem', fontWeight: 800, color: 'var(--primary-dark)' }}>4,521</span>
-                <span style={{ color: 'var(--color-success)', fontWeight: 600, fontSize: '0.85rem' }}>+8.4%</span>
+                <span style={{ color: 'var(--color-success)', fontWeight: 600, fontSize: '0.85rem' }}>Aforo saludable</span>
               </div>
             </div>
 
@@ -2154,15 +2892,85 @@ export default function App() {
             </div>
 
             <div style={{ background: '#FFFFFF', padding: '24px', borderRadius: 'var(--radius-lg)', boxShadow: 'var(--shadow-level-1)', borderLeft: '4px solid var(--secondary)' }}>
-              <span style={{ fontSize: '0.85rem', color: 'var(--text-muted)' }}>Ingresos por Inscripciones</span>
+              <span style={{ fontSize: '0.85rem', color: 'var(--text-muted)' }}>Recaudación Inscripciones</span>
               <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', marginTop: '8px' }}>
                 <span style={{ fontSize: '2.2rem', fontWeight: 800, color: 'var(--primary-dark)' }}>$ 4,521</span>
-                <span style={{ color: 'var(--color-success)', fontWeight: 600, fontSize: '0.85rem' }}>Auditoría OK</span>
+                <span style={{ color: 'var(--color-success)', fontWeight: 600, fontSize: '0.85rem' }}>Auditado</span>
               </div>
             </div>
           </div>
 
-          {/* Gráfico y Tareas */}
+          {/* Tabla de Gestión de Congresos */}
+          <div style={{ background: '#FFFFFF', padding: '28px', borderRadius: 'var(--radius-xl)', boxShadow: 'var(--shadow-level-1)', marginBottom: '32px' }}>
+            <h3 style={{ fontSize: '1.2rem', color: 'var(--primary-dark)', marginBottom: '16px' }}>
+              Catálogo Administrativo de Congresos y Eventos
+            </h3>
+            <div className="table-responsive-wrapper">
+              <table style={{ width: '100%', minWidth: '700px', borderCollapse: 'collapse', fontSize: '0.88rem' }}>
+                <thead style={{ background: 'var(--surface-container)', color: 'var(--primary-dark)' }}>
+                  <tr>
+                    <th style={{ padding: '12px 16px', textAlign: 'left' }}>Evento Académico</th>
+                    <th style={{ padding: '12px 16px', textAlign: 'left' }}>Modalidad</th>
+                    <th style={{ padding: '12px 16px', textAlign: 'left' }}>Fechas</th>
+                    <th style={{ padding: '12px 16px', textAlign: 'left' }}>Inscritos / Aforo</th>
+                    <th style={{ padding: '12px 16px', textAlign: 'left' }}>Estado del Evento</th>
+                    <th style={{ padding: '12px 16px', textAlign: 'center' }}>Acciones</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {eventos.map((ev) => (
+                    <tr key={ev.id} style={{ borderBottom: '1px solid rgba(0, 47, 108, 0.08)' }}>
+                      <td style={{ padding: '14px 16px' }}>
+                        <strong style={{ color: 'var(--primary-dark)', display: 'block' }}>{ev.nombre}</strong>
+                        <span style={{ fontSize: '0.78rem', color: 'var(--text-muted)' }}>{ev.lugar}</span>
+                      </td>
+                      <td style={{ padding: '14px 16px' }}>
+                        <span className="chip chip-primary">{ev.modalidad}</span>
+                      </td>
+                      <td style={{ padding: '14px 16px', fontSize: '0.82rem' }}>
+                        {new Date(ev.fecha_inicio).toLocaleDateString('es-EC')} - {new Date(ev.fecha_fin).toLocaleDateString('es-EC')}
+                      </td>
+                      <td style={{ padding: '14px 16px' }}>
+                        <strong>{ev.total_inscritos || 0}</strong> / {ev.capacidad_maxima}
+                      </td>
+                      <td style={{ padding: '14px 16px' }}>
+                        <select
+                          value={ev.estado}
+                          onChange={(e) => handleEventStatusChange(ev.id, e.target.value)}
+                          style={{
+                            padding: '4px 8px',
+                            borderRadius: 'var(--radius-sm)',
+                            border: '1px solid var(--primary-container)',
+                            fontSize: '0.82rem',
+                            fontWeight: 600,
+                          }}
+                        >
+                          <option value="INSCRIPCIONES_ABIERTAS">Inscripciones Abiertas</option>
+                          <option value="EN_CURSO">En Curso</option>
+                          <option value="FINALIZADO">Finalizado</option>
+                          <option value="BORRADOR">Borrador</option>
+                        </select>
+                      </td>
+                      <td style={{ padding: '14px 16px', textAlign: 'center' }}>
+                        <button
+                          className="btn btn-outline btn-sm"
+                          style={{ fontSize: '0.8rem', padding: '4px 10px' }}
+                          onClick={() => {
+                            setDetailEvent(ev);
+                            setShowEventDetailsModal(true);
+                          }}
+                        >
+                          Ver Detalle
+                        </button>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+          {/* Gráfico y Tareas Operativas de Eventos */}
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 300px), 1fr))', gap: '24px' }}>
             <div style={{ background: '#FFFFFF', padding: '26px', borderRadius: 'var(--radius-lg)', boxShadow: 'var(--shadow-level-1)' }}>
               <h3 style={{ fontSize: '1.15rem', marginBottom: '16px' }}>Evolución de la Participación</h3>
@@ -2191,7 +2999,7 @@ export default function App() {
             </div>
 
             <div style={{ background: '#FFFFFF', padding: '26px', borderRadius: 'var(--radius-lg)', boxShadow: 'var(--shadow-level-1)' }}>
-              <h3 style={{ fontSize: '1.15rem', marginBottom: '16px' }}>Tareas Operativas Pendientes</h3>
+              <h3 style={{ fontSize: '1.15rem', marginBottom: '16px' }}>Tareas Operativas de Congresos</h3>
               <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
                 <div
                   style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '12px', background: 'var(--surface-bg)', borderRadius: 'var(--radius-sm)', cursor: 'pointer' }}
@@ -2199,190 +3007,31 @@ export default function App() {
                 >
                   <span style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                     <span className="material-symbols-outlined" style={{ fontSize: '18px', color: 'var(--secondary)' }}>receipt_long</span>
-                    Aprobar Comprobantes
+                    Comprobantes en Mesa de Finanzas
                   </span>
-                  <span className="chip chip-urgent">2 pendientes</span>
+                  <span className="chip chip-urgent">2 por auditar</span>
                 </div>
 
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '12px', background: 'var(--surface-bg)', borderRadius: 'var(--radius-sm)' }}>
+                <div
+                  style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '12px', background: 'var(--surface-bg)', borderRadius: 'var(--radius-sm)', cursor: 'pointer' }}
+                  onClick={() => { setCurrentRole('ASISTENCIA_STAFF'); navigateTo('checkin_staff', '/checkin'); }}
+                >
                   <span style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                    <span className="material-symbols-outlined" style={{ fontSize: '18px', color: 'var(--color-alert)' }}>fact_check</span>
-                    Validar Acreditaciones
+                    <span className="material-symbols-outlined" style={{ fontSize: '18px', color: 'var(--color-alert)' }}>qr_code_scanner</span>
+                    Puntos de Control de Asistencia
                   </span>
-                  <span className="chip chip-alert">15 por revisar</span>
+                  <span className="chip chip-success">Activo en puerta</span>
                 </div>
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '12px', background: 'var(--surface-bg)', borderRadius: 'var(--radius-sm)' }}>
+
+                <div
+                  style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '12px', background: 'var(--surface-bg)', borderRadius: 'var(--radius-sm)', cursor: 'pointer' }}
+                  onClick={() => navigateTo('certificados', '/certificados')}
+                >
                   <span style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                     <span className="material-symbols-outlined" style={{ fontSize: '18px', color: 'var(--primary-container)' }}>workspace_premium</span>
-                    Configurar Certificados
+                    Plantillas de Certificados Oficiales
                   </span>
-                  <span className="chip chip-primary">1 congreso</span>
-                </div>
-              </div>
-            </div>
-          </div>
-
-          {/* ============================================================== */}
-          {/* SECCIÓN SUPERADMIN: CONFIGURACIÓN DE FIRMA DIGITAL Y AUTORIDAD */}
-          {/* ============================================================== */}
-          <div style={{ marginTop: '36px', background: '#FFFFFF', padding: '32px', borderRadius: 'var(--radius-lg)', boxShadow: 'var(--shadow-level-1)' }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '24px', flexWrap: 'wrap', gap: '16px' }}>
-              <div>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                  <span className="material-symbols-outlined" style={{ color: 'var(--primary-container)', fontSize: '28px' }}>draw</span>
-                  <h3 style={{ fontSize: '1.35rem', color: 'var(--primary-dark)' }}>Firma Digital y Sellos Oficiales para Certificados</h3>
-                </div>
-                <p className="body-regular" style={{ marginTop: '4px' }}>
-                  Sube o dibuja la firma de la autoridad (Rector/Decano) para que se incorpore automáticamente en todos los certificados y credenciales PDF.
-                </p>
-              </div>
-              <button className="btn btn-outline btn-sm" onClick={resetDefaultSignature}>
-                <span className="material-symbols-outlined">restart_alt</span> Restaurar Valores Institucionales
-              </button>
-            </div>
-
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 320px), 1fr))', gap: '32px' }}>
-              {/* Formulario de Metadatos de Autoridad */}
-              <div>
-                <h4 style={{ fontSize: '1rem', color: 'var(--primary-dark)', marginBottom: '16px', display: 'flex', alignItems: 'center', gap: '6px' }}>
-                  <span className="material-symbols-outlined" style={{ fontSize: '18px' }}>badge</span> Datos de la Autoridad Universitaria
-                </h4>
-
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
-                  <div>
-                    <label style={{ display: 'block', fontSize: '0.85rem', fontWeight: 600, marginBottom: '6px' }}>
-                      Nombre de la Autoridad Titular:
-                    </label>
-                    <input
-                      type="text"
-                      className="input-field"
-                      style={{ width: '100%' }}
-                      value={authorityConfig.nombre}
-                      onChange={(e) => updateAuthorityConfig({ ...authorityConfig, nombre: e.target.value })}
-                      placeholder="Ej. Dr. Marcos Zambrano Zambrano, PhD."
-                    />
-                  </div>
-
-                  <div>
-                    <label style={{ display: 'block', fontSize: '0.85rem', fontWeight: 600, marginBottom: '6px' }}>
-                      Cargo / Dignidad Universitaria:
-                    </label>
-                    <input
-                      type="text"
-                      className="input-field"
-                      style={{ width: '100%' }}
-                      value={authorityConfig.cargo}
-                      onChange={(e) => updateAuthorityConfig({ ...authorityConfig, cargo: e.target.value })}
-                      placeholder="Ej. Rector Institucional ULEAM"
-                    />
-                  </div>
-
-                  <div>
-                    <label style={{ display: 'block', fontSize: '0.85rem', fontWeight: 600, marginBottom: '6px' }}>
-                      Resolución u Ordenanza Institucional:
-                    </label>
-                    <input
-                      type="text"
-                      className="input-field"
-                      style={{ width: '100%' }}
-                      value={authorityConfig.resolucion}
-                      onChange={(e) => updateAuthorityConfig({ ...authorityConfig, resolucion: e.target.value })}
-                      placeholder="Ej. Resolución H.C.U. No. 042-CU-ULEAM-2026"
-                    />
-                  </div>
-
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginTop: '6px' }}>
-                    <input
-                      type="checkbox"
-                      id="selloActivo"
-                      checked={authorityConfig.selloActivo}
-                      onChange={(e) => updateAuthorityConfig({ ...authorityConfig, selloActivo: e.target.checked })}
-                      style={{ width: '18px', height: '18px', accentColor: 'var(--primary-container)', cursor: 'pointer' }}
-                    />
-                    <label htmlFor="selloActivo" style={{ fontSize: '0.88rem', fontWeight: 600, cursor: 'pointer' }}>
-                      Incorporar Sello Oficial Institucional (Manta - Ecuador)
-                    </label>
-                  </div>
-                </div>
-
-                {/* Subir Archivo de Imagen */}
-                <div style={{ marginTop: '24px', padding: '16px', background: 'var(--surface-bg)', borderRadius: 'var(--radius-md)', border: '1px dashed #002F6C' }}>
-                  <label style={{ display: 'block', fontSize: '0.88rem', fontWeight: 700, marginBottom: '6px', color: 'var(--primary-dark)' }}>
-                    Opción A: Subir Imagen de Firma (PNG / JPG)
-                  </label>
-                  <p style={{ fontSize: '0.8rem', color: 'var(--text-muted)', marginBottom: '10px' }}>
-                    Se recomienda archivo PNG con fondo transparente o fondo blanco limpio.
-                  </p>
-                  <input
-                    type="file"
-                    accept="image/png,image/jpeg,image/webp"
-                    onChange={handleSignatureUpload}
-                    style={{ fontSize: '0.85rem' }}
-                  />
-                </div>
-              </div>
-
-              {/* Dibujo de Firma en Lienzo Digital y Vista Previa */}
-              <div>
-                <h4 style={{ fontSize: '1rem', color: 'var(--primary-dark)', marginBottom: '16px', display: 'flex', alignItems: 'center', gap: '6px' }}>
-                  <span className="material-symbols-outlined" style={{ fontSize: '18px' }}>gesture</span> Opción B: Dibujar Firma con Mouse o Pantalla Táctil
-                </h4>
-
-                <div style={{ background: '#FAF9F6', border: '2px dashed #CBD5E1', borderRadius: 'var(--radius-md)', padding: '10px', textAlign: 'center' }}>
-                  <canvas
-                    ref={sigCanvasRef}
-                    width={380}
-                    height={140}
-                    style={{ background: '#FFFFFF', border: '1px solid #E2E8F0', borderRadius: '6px', cursor: 'crosshair', display: 'block', margin: '0 auto', touchAction: 'none', maxWidth: '100%' }}
-                    onMouseDown={startDrawingSig}
-                    onMouseMove={drawSig}
-                    onMouseUp={stopDrawingSig}
-                    onMouseLeave={stopDrawingSig}
-                    onTouchStart={startDrawingSig}
-                    onTouchMove={drawSig}
-                    onTouchEnd={stopDrawingSig}
-                  />
-                  <div style={{ display: 'flex', justifyContent: 'center', gap: '10px', marginTop: '12px' }}>
-                    <button className="btn btn-outline btn-sm" onClick={clearSignatureCanvas}>
-                      <span className="material-symbols-outlined">delete</span> Limpiar Lienzo
-                    </button>
-                    <button className="btn btn-primary btn-sm" onClick={saveDrawnSignature}>
-                      <span className="material-symbols-outlined">save</span> Guardar Trazo como Firma
-                    </button>
-                  </div>
-                </div>
-
-                {/* Vista previa en vivo del pie de firma */}
-                <div style={{ marginTop: '20px', padding: '18px', background: '#FFFFFF', border: '1px solid #E2E8F0', borderRadius: 'var(--radius-md)', textAlign: 'center' }}>
-                  <span style={{ fontSize: '0.78rem', color: 'var(--text-muted)', fontWeight: 600, display: 'block', marginBottom: '8px' }}>
-                    VISTA PREVIA EN TIEMPO REAL DEL BLOQUE DE FIRMA OFICIAL:
-                  </span>
-                  <div style={{ height: '60px', display: 'flex', alignItems: 'flex-end', justifyContent: 'center', marginBottom: '4px' }}>
-                    {authorityConfig.firmaUrl ? (
-                      <img
-                        src={authorityConfig.firmaUrl}
-                        alt="Firma actual"
-                        style={{ maxHeight: '60px', maxWidth: '200px', objectFit: 'contain' }}
-                      />
-                    ) : (
-                      <div style={{ fontFamily: 'Brush Script MT, cursive', fontSize: '1.9rem', color: '#002F6C' }}>
-                        Marcos Zambrano Z.
-                      </div>
-                    )}
-                  </div>
-                  <div style={{ width: '220px', height: '1.5px', background: '#002F6C', margin: '0 auto 6px' }}></div>
-                  <strong style={{ fontSize: '0.9rem', color: '#002F6C', display: 'block' }}>{authorityConfig.nombre}</strong>
-                  <span style={{ fontSize: '0.76rem', color: '#C59B27', fontWeight: 600, display: 'block' }}>{authorityConfig.cargo}</span>
-                  <span style={{ fontSize: '0.7rem', color: '#777777', display: 'block' }}>{authorityConfig.resolucion}</span>
-
-                  <div style={{ marginTop: '14px', display: 'flex', justifyContent: 'center', gap: '8px' }}>
-                    <button className="btn btn-outline btn-sm" onClick={handleDownloadCertPDF}>
-                      <span className="material-symbols-outlined">download</span> Probar Descarga PDF
-                    </button>
-                    <button className="btn btn-outline btn-sm" onClick={handlePrintCert}>
-                      <span className="material-symbols-outlined">print</span> Vista Imprimible
-                    </button>
-                  </div>
+                  <span className="chip chip-primary">SHA-256 Activo</span>
                 </div>
               </div>
             </div>
@@ -2507,69 +3156,380 @@ export default function App() {
       {currentView === 'checkin_staff' && (
         <main className="main-container" style={{ padding: '40px 24px' }}>
           <div style={{ marginBottom: '28px' }}>
-            <span className="chip chip-urgent" style={{ marginBottom: '8px' }}>Control de Puerta Activo</span>
+            <span className="chip chip-urgent" style={{ marginBottom: '8px' }}>Control de Puerta Activo (PC / Móvil)</span>
             <h2 className="headline-large">Validación de Asistencia en Tiempo Real</h2>
-            <p className="body-regular">Escanea el código QR de las credenciales o ingresa la cédula del participante.</p>
+            <p className="body-regular">Escanea la credencial QR mediante cámara en vivo, sube una foto del código o digita la cédula.</p>
           </div>
 
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 300px), 1fr))', gap: '30px' }}>
-            {/* Lector QR / Formulario de Entrada */}
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 320px), 1fr))', gap: '30px' }}>
+            {/* Lector QR de Cámara / Formulario */}
             <div style={{ background: '#FFFFFF', padding: '26px', borderRadius: 'var(--radius-xl)', boxShadow: 'var(--shadow-level-1)' }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '20px' }}>
                 <div style={{ textAlign: 'center', flex: 1, borderRight: '1px solid rgba(0, 47, 108, 0.1)' }}>
-                  <span style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>Validados</span>
-                  <strong style={{ fontSize: '1.8rem', color: 'var(--color-success)', display: 'block' }}>142</strong>
+                  <span style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>Validados en Sala</span>
+                  <strong style={{ fontSize: '1.8rem', color: 'var(--color-success)', display: 'block' }}>
+                    {142 + recentCheckins.length}
+                  </strong>
                 </div>
                 <div style={{ textAlign: 'center', flex: 1 }}>
-                  <span style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>Pendientes</span>
-                  <strong style={{ fontSize: '1.8rem', color: 'var(--secondary)', display: 'block' }}>58</strong>
+                  <span style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>Pendientes Aforo</span>
+                  <strong style={{ fontSize: '1.8rem', color: 'var(--secondary)', display: 'block' }}>
+                    {Math.max(0, 58 - recentCheckins.length)}
+                  </strong>
+                </div>
+              </div>
+
+              {/* Banner Informativo de Acceso Móvil por Red Local (Wi-Fi) */}
+              <div
+                style={{
+                  background: 'rgba(0, 47, 108, 0.04)',
+                  border: '1px solid rgba(0, 47, 108, 0.12)',
+                  borderRadius: 'var(--radius-md)',
+                  padding: '12px 16px',
+                  marginBottom: '16px',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'space-between',
+                  flexWrap: 'wrap',
+                  gap: '10px',
+                }}
+              >
+                <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                  <span className="material-symbols-outlined" style={{ color: 'var(--primary-container)', fontSize: '24px' }}>phone_iphone</span>
+                  <div>
+                    <strong style={{ fontSize: '0.84rem', color: 'var(--primary-dark)', display: 'block' }}>
+                      Prueba Móvil en Red Local:
+                    </strong>
+                    <span style={{ fontSize: '0.78rem', color: 'var(--text-muted)' }}>
+                      Ingresa en tu teléfono a: <strong style={{ color: 'var(--primary-container)', userSelect: 'all' }}>https://{typeof window !== 'undefined' && window.location.hostname !== 'localhost' ? window.location.hostname : '192.168.0.239'}:5173</strong>
+                    </span>
+                  </div>
+                </div>
+                <span className="chip chip-success" style={{ fontSize: '0.72rem' }}>
+                  HTTPS LAN Activo
+                </span>
+              </div>
+
+              {/* Botones de Control de Cámara */}
+              <div style={{ marginBottom: '18px' }}>
+                <label style={{ display: 'block', marginBottom: '8px', fontWeight: 700, fontSize: '0.9rem', color: 'var(--primary-dark)' }}>
+                  Escaneo con Cámara Web (PC) o Cámara Trasera (Móvil):
+                </label>
+
+                {/* Selector de Dispositivos de Video (cuando hay más de una cámara detectada) */}
+                {availableCameras.length > 1 && (
+                  <div style={{ marginBottom: '10px' }}>
+                    <label style={{ display: 'block', fontSize: '0.78rem', fontWeight: 600, color: 'var(--text-muted)', marginBottom: '4px' }}>
+                      Dispositivo de Cámara Seleccionado:
+                    </label>
+                    <select
+                      className="input-control"
+                      style={{ fontSize: '0.82rem', padding: '6px 10px', width: '100%' }}
+                      value={selectedCameraId}
+                      onChange={(e) => {
+                        setSelectedCameraId(e.target.value);
+                        if (cameraActive) {
+                          startQrCamera(e.target.value);
+                        }
+                      }}
+                    >
+                      {availableCameras.map((cam, idx) => (
+                        <option key={cam.deviceId || idx} value={cam.deviceId}>
+                          {cam.label || `Cámara ${idx + 1} (${cam.deviceId.slice(0, 8)}...)`}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                )}
+
+                <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', marginBottom: '12px' }}>
+                  {!cameraActive ? (
+                    <button
+                      type="button"
+                      className="btn btn-primary btn-sm"
+                      style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px' }}
+                      onClick={() => startQrCamera()}
+                    >
+                      <span className="material-symbols-outlined">videocam</span> Iniciar Cámara
+                    </button>
+                  ) : (
+                    <>
+                      <button
+                        type="button"
+                        className="btn btn-urgent btn-sm"
+                        style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px' }}
+                        onClick={stopQrCamera}
+                      >
+                        <span className="material-symbols-outlined">videocam_off</span> Detener Cámara
+                      </button>
+                      <button
+                        type="button"
+                        className="btn btn-outline btn-sm"
+                        style={{ display: 'flex', alignItems: 'center', gap: '4px' }}
+                        onClick={toggleQrCamera}
+                        title="Alternar entre cámaras disponibles o frontal/trasera"
+                      >
+                        <span className="material-symbols-outlined">cameraswitch</span> Cambiar
+                      </button>
+                    </>
+                  )}
+                </div>
+
+                {/* Visor de Cámara en Vivo con Mirilla de Escaneo */}
+                {cameraActive && (
+                  <div
+                    style={{
+                      position: 'relative',
+                      width: '100%',
+                      background: '#000000',
+                      borderRadius: 'var(--radius-lg)',
+                      overflow: 'hidden',
+                      marginBottom: '16px',
+                      aspectRatio: '4 / 3',
+                    }}
+                  >
+                    <video
+                      ref={(el) => {
+                        videoRef.current = el;
+                        if (el && scannerStreamRef.current && el.srcObject !== scannerStreamRef.current) {
+                          el.srcObject = scannerStreamRef.current;
+                          el.play().catch(() => {});
+                        }
+                      }}
+                      playsInline
+                      muted
+                      autoPlay
+                      onLoadedMetadata={(e) => {
+                        e.target.play().catch(() => {});
+                      }}
+                      style={{ width: '100%', height: '100%', minHeight: '260px', objectFit: 'cover', display: 'block', background: '#000000' }}
+                    />
+                    {/* Retícula visual y haz de escaneo láser */}
+                    <div
+                      style={{
+                        position: 'absolute',
+                        inset: '15%',
+                        border: '2px solid rgba(0, 195, 255, 0.9)',
+                        borderRadius: '16px',
+                        boxShadow: '0 0 0 9999px rgba(0, 0, 0, 0.5)',
+                        pointerEvents: 'none',
+                      }}
+                    >
+                      <div
+                        style={{
+                          position: 'absolute',
+                          left: 0,
+                          right: 0,
+                          top: '50%',
+                          height: '2px',
+                          background: 'linear-gradient(90deg, transparent, #FF0055, transparent)',
+                          boxShadow: '0 0 8px #FF0055',
+                          animation: 'pulse 1.5s infinite',
+                        }}
+                      ></div>
+                    </div>
+                    <span
+                      style={{
+                        position: 'absolute',
+                        bottom: '10px',
+                        left: '50%',
+                        transform: 'translateX(-50%)',
+                        background: 'rgba(0, 0, 0, 0.75)',
+                        color: '#FFFFFF',
+                        padding: '4px 12px',
+                        borderRadius: '20px',
+                        fontSize: '0.75rem',
+                        fontWeight: 600,
+                        whiteSpace: 'nowrap',
+                      }}
+                    >
+                      Apunte el código QR de la credencial
+                    </span>
+                  </div>
+                )}
+
+                {/* Botones de Prueba Rápida y Simulación de Escaneo */}
+                {cameraActive && (
+                  <div style={{ display: 'flex', gap: '8px', marginTop: '10px', marginBottom: '16px', flexWrap: 'wrap' }}>
+                    <button
+                      type="button"
+                      className="btn btn-outline btn-sm"
+                      style={{ flex: 1, fontSize: '0.8rem', padding: '6px 12px', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px' }}
+                      onClick={() => {
+                        handleExecuteScan('ULEAM-QR-KARLA-1317890123');
+                        stopQrCamera();
+                      }}
+                      title="Simula la detección inmediata de una credencial válida con sonido y registro de aforo"
+                    >
+                      <span className="material-symbols-outlined" style={{ fontSize: '16px', color: 'var(--color-success)' }}>check_circle</span>
+                      Simular Credencial Válida
+                    </button>
+                    <button
+                      type="button"
+                      className="btn btn-outline btn-sm"
+                      style={{ flex: 1, fontSize: '0.8rem', padding: '6px 12px', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px' }}
+                      onClick={() => {
+                        handleExecuteScan('ULEAM-QR-ERROR-0000000000');
+                      }}
+                      title="Simula un intento de acceso con credencial no válida"
+                    >
+                      <span className="material-symbols-outlined" style={{ fontSize: '16px', color: 'var(--color-alert)' }}>cancel</span>
+                      Simular Acceso Denegado
+                    </button>
+                  </div>
+                )}
+
+                {cameraError && (
+                  <div style={{ padding: '8px 12px', background: 'var(--color-error-bg)', color: 'var(--color-error)', borderRadius: 'var(--radius-sm)', fontSize: '0.82rem', marginBottom: '12px' }}>
+                    {cameraError}
+                  </div>
+                )}
+              </div>
+
+              {/* Subir foto de QR o archivo - Diseño Profesional Institucional */}
+              <div style={{ marginBottom: '22px' }}>
+                <label style={{ display: 'block', fontSize: '0.88rem', fontWeight: 700, marginBottom: '8px', color: 'var(--primary-dark)' }}>
+                  O escanear desde imagen / foto de credencial QR:
+                </label>
+                <div
+                  style={{
+                    border: '2px dashed var(--primary-container)',
+                    borderRadius: 'var(--radius-lg)',
+                    background: uploadedQrFileName ? 'rgba(46, 125, 50, 0.04)' : 'rgba(0, 47, 108, 0.03)',
+                    padding: '20px 24px',
+                    textAlign: 'center',
+                    cursor: 'pointer',
+                    transition: 'all 0.2s ease',
+                    position: 'relative',
+                  }}
+                  onClick={() => {
+                    const el = document.getElementById('custom-qr-file-input');
+                    if (el) el.click();
+                  }}
+                  onMouseEnter={(e) => {
+                    e.currentTarget.style.background = uploadedQrFileName ? 'rgba(46, 125, 50, 0.08)' : 'rgba(0, 47, 108, 0.08)';
+                    e.currentTarget.style.borderColor = 'var(--primary-dark)';
+                  }}
+                  onMouseLeave={(e) => {
+                    e.currentTarget.style.background = uploadedQrFileName ? 'rgba(46, 125, 50, 0.04)' : 'rgba(0, 47, 108, 0.03)';
+                    e.currentTarget.style.borderColor = 'var(--primary-container)';
+                  }}
+                >
+                  <input
+                    id="custom-qr-file-input"
+                    type="file"
+                    accept="image/*"
+                    style={{ display: 'none' }}
+                    onChange={(e) => {
+                      const file = e.target.files && e.target.files[0];
+                      if (file) {
+                        setUploadedQrFileName(file.name);
+                        handleQrImageUpload(e);
+                      }
+                    }}
+                  />
+                  <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '8px' }}>
+                    <div
+                      style={{
+                        width: '48px',
+                        height: '48px',
+                        borderRadius: '50%',
+                        background: uploadedQrFileName ? 'rgba(46, 125, 50, 0.12)' : 'rgba(0, 47, 108, 0.1)',
+                        color: uploadedQrFileName ? 'var(--color-success)' : 'var(--primary-container)',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                      }}
+                    >
+                      <span className="material-symbols-outlined" style={{ fontSize: '28px' }}>
+                        {uploadedQrFileName ? 'check_circle' : 'add_photo_alternate'}
+                      </span>
+                    </div>
+
+                    <div>
+                      <strong style={{ display: 'block', fontSize: '0.92rem', color: uploadedQrFileName ? 'var(--color-success)' : 'var(--primary-dark)' }}>
+                        {uploadedQrFileName ? `✓ Archivo cargado: ${uploadedQrFileName}` : 'Seleccionar o Arrastrar Foto / Captura QR'}
+                      </strong>
+                      <span style={{ display: 'block', fontSize: '0.78rem', color: 'var(--text-muted)', marginTop: '2px' }}>
+                        {uploadedQrFileName
+                          ? 'Haz clic aquí para seleccionar otro archivo de imagen'
+                          : 'Soporta archivos PNG, JPG, WEBP o fotos de credenciales tomadas desde tu móvil'}
+                      </span>
+                    </div>
+
+                    <div style={{ display: 'flex', gap: '8px', marginTop: '4px' }}>
+                      <span className="btn btn-outline btn-sm" style={{ pointerEvents: 'none', fontSize: '0.82rem', padding: '5px 14px' }}>
+                        <span className="material-symbols-outlined" style={{ fontSize: '18px' }}>upload_file</span>
+                        {uploadedQrFileName ? 'Cambiar Imagen' : 'Explorar Galería / Archivos'}
+                      </span>
+                    </div>
+                  </div>
                 </div>
               </div>
 
               <form onSubmit={handleCheckInSubmit}>
-                <label style={{ display: 'block', marginBottom: '8px', fontWeight: 600, fontSize: '0.9rem' }}>
-                  Escaneo QR o C.I. del Participante:
+                <label style={{ display: 'block', marginBottom: '6px', fontWeight: 600, fontSize: '0.85rem' }}>
+                  O digitar C.I. / Token QR manualmente:
                 </label>
-                <div style={{ display: 'flex', gap: '8px', marginBottom: '16px' }}>
+                <div style={{ display: 'flex', gap: '8px', marginBottom: '14px' }}>
                   <input
                     type="text"
                     className="input-control"
-                    placeholder="Ej: 1317890123 o TOKEN-QR"
+                    placeholder="Ej: 1317890123"
                     value={scanInput}
                     onChange={(e) => setScanInput(e.target.value)}
                   />
-                  <button type="submit" className="btn btn-primary">
-                    <span className="material-symbols-outlined">qr_code_scanner</span> Validar
+                  <button type="submit" className="btn btn-primary" style={{ minWidth: '95px' }}>
+                    <span className="material-symbols-outlined">check</span> Validar
                   </button>
                 </div>
               </form>
 
-              {/* Botón rápido de prueba */}
-              <div style={{ display: 'flex', gap: '8px', marginTop: '10px' }}>
-                <button
-                  type="button"
-                  className="btn btn-outline btn-sm"
-                  style={{ flex: 1, fontSize: '0.8rem' }}
-                  onClick={() => setScanInput('1317890123')}
-                >
-                  Probar Cédula Válida
-                </button>
-                <button
-                  type="button"
-                  className="btn btn-outline btn-sm"
-                  style={{ flex: 1, fontSize: '0.8rem', borderColor: 'var(--color-error)', color: 'var(--color-error)' }}
-                  onClick={() => setScanInput('0000000000')}
-                >
-                  Probar Inválido
-                </button>
+              {/* Botones Rápidos de Prueba para Demostración */}
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', marginTop: '10px' }}>
+                <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)', fontWeight: 600 }}>Pruebas rápidas de campo:</span>
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '6px' }}>
+                  <button
+                    type="button"
+                    className="btn btn-outline btn-sm"
+                    style={{ fontSize: '0.75rem', padding: '6px' }}
+                    onClick={() => handleExecuteScan('1317890123')}
+                  >
+                    Karla Andrade (Válido)
+                  </button>
+                  <button
+                    type="button"
+                    className="btn btn-outline btn-sm"
+                    style={{ fontSize: '0.75rem', padding: '6px' }}
+                    onClick={() => handleExecuteScan('1318901234')}
+                  >
+                    Javier Jaramillo (Válido)
+                  </button>
+                  <button
+                    type="button"
+                    className="btn btn-outline btn-sm"
+                    style={{ fontSize: '0.75rem', padding: '6px', color: '#B45309', borderColor: '#F59E0B' }}
+                    onClick={() => handleExecuteScan('DUPLICADO')}
+                  >
+                    Probar Duplicado
+                  </button>
+                  <button
+                    type="button"
+                    className="btn btn-outline btn-sm"
+                    style={{ fontSize: '0.75rem', padding: '6px', color: 'var(--color-error)', borderColor: 'var(--color-error)' }}
+                    onClick={() => handleExecuteScan('ERROR-0000000000')}
+                  >
+                    Probar Inválido
+                  </button>
+                </div>
               </div>
 
               {/* Resultado del Escaneo */}
               {scanResult && (
                 <div
                   style={{
-                    marginTop: '24px',
-                    padding: '20px',
+                    marginTop: '20px',
+                    padding: '16px',
                     borderRadius: 'var(--radius-lg)',
                     background: scanResult.exito
                       ? scanResult.advertencia
@@ -2579,7 +3539,7 @@ export default function App() {
                     border: `1px solid ${scanResult.exito ? (scanResult.advertencia ? 'var(--color-alert)' : 'var(--color-success)') : 'var(--color-error)'}`,
                   }}
                 >
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '8px' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '6px' }}>
                     <span
                       className="material-symbols-outlined"
                       style={{
@@ -2593,14 +3553,15 @@ export default function App() {
                     >
                       {scanResult.exito ? (scanResult.advertencia ? 'warning' : 'check_circle') : 'cancel'}
                     </span>
-                    <strong style={{ fontSize: '1.1rem', color: scanResult.exito ? (scanResult.advertencia ? '#995B00' : 'var(--color-success)') : 'var(--color-error)' }}>
+                    <strong style={{ fontSize: '1.05rem', color: scanResult.exito ? (scanResult.advertencia ? '#995B00' : 'var(--color-success)') : 'var(--color-error)' }}>
                       {scanResult.mensaje}
                     </strong>
                   </div>
                   {scanResult.participante && (
-                    <div style={{ fontSize: '0.9rem', color: 'var(--text-primary)', marginTop: '8px' }}>
+                    <div style={{ fontSize: '0.85rem', color: 'var(--text-primary)', marginTop: '6px', lineHeight: '1.4' }}>
                       <p><strong>Participante:</strong> {scanResult.participante}</p>
                       <p><strong>Categoría:</strong> {scanResult.categoria}</p>
+                      {scanResult.institucion && <p><strong>Institución:</strong> {scanResult.institucion}</p>}
                       <p><strong>Hora:</strong> {scanResult.hora}</p>
                     </div>
                   )}
@@ -2610,7 +3571,10 @@ export default function App() {
 
             {/* Feed de Últimos Ingresos */}
             <div style={{ background: '#FFFFFF', padding: '26px', borderRadius: 'var(--radius-xl)', boxShadow: 'var(--shadow-level-1)' }}>
-              <h3 style={{ fontSize: '1.15rem', marginBottom: '16px' }}>Últimos Ingresos Verificados</h3>
+              <h3 style={{ fontSize: '1.15rem', marginBottom: '16px', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <span className="material-symbols-outlined" style={{ color: 'var(--color-success)' }}>history</span>
+                Últimos Ingresos Verificados en Puerta
+              </h3>
               <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
                 {recentCheckins.map((item) => (
                   <div
@@ -2619,36 +3583,21 @@ export default function App() {
                       display: 'flex',
                       alignItems: 'center',
                       justifyContent: 'space-between',
-                      padding: '12px 16px',
+                      padding: '12px 14px',
+                      borderRadius: 'var(--radius-md)',
                       background: 'var(--surface-bg)',
-                      borderRadius: 'var(--radius-sm)',
+                      borderLeft: '4px solid var(--color-success)',
                     }}
                   >
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-                      <div
-                        style={{
-                          width: '36px',
-                          height: '36px',
-                          borderRadius: '50%',
-                          background: 'var(--surface-container)',
-                          color: 'var(--primary-container)',
-                          display: 'flex',
-                          alignItems: 'center',
-                          justifyContent: 'center',
-                          fontWeight: 700,
-                        }}
-                      >
-                        {item.nombre.charAt(0)}
-                      </div>
-                      <div>
-                        <strong>{item.nombre}</strong>
-                        <span style={{ display: 'block', fontSize: '0.78rem', color: 'var(--text-muted)' }}>
-                          {item.tiempo}
-                        </span>
-                      </div>
+                    <div>
+                      <strong style={{ display: 'block', fontSize: '0.9rem', color: 'var(--primary-dark)' }}>
+                        {item.nombre}
+                      </strong>
+                      <span style={{ fontSize: '0.78rem', color: 'var(--text-muted)' }}>
+                        Hora registrada: {item.tiempo}
+                      </span>
                     </div>
-                    <span className="chip chip-success">
-                      <span className="material-symbols-outlined" style={{ fontSize: '14px' }}>verified</span>
+                    <span className="chip chip-success" style={{ fontSize: '0.75rem' }}>
                       {item.estado}
                     </span>
                   </div>
@@ -2677,6 +3626,84 @@ export default function App() {
       )}
 
       {/* ============================================================== */}
+            {/* MODAL: CONFIRMACIÓN DE CIERRE DE SESIÓN */}
+      {showLogoutConfirmModal && (
+        <div
+          className="modal-backdrop"
+          style={{
+            position: 'fixed',
+            inset: 0,
+            background: 'rgba(0, 47, 108, 0.45)',
+            backdropFilter: 'blur(4px)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            zIndex: 10000,
+            padding: '20px',
+          }}
+        >
+          <div
+            className="modal-card"
+            style={{
+              maxWidth: '440px',
+              width: '100%',
+              background: '#FFFFFF',
+              borderRadius: 'var(--radius-xl)',
+              padding: '28px',
+              boxShadow: 'var(--shadow-level-3)',
+              textAlign: 'center',
+            }}
+          >
+            <div
+              style={{
+                width: '56px',
+                height: '56px',
+                borderRadius: '50%',
+                background: 'rgba(211, 47, 47, 0.1)',
+                color: 'var(--color-alert)',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                margin: '0 auto 16px',
+              }}
+            >
+              <span className="material-symbols-outlined" style={{ fontSize: '30px' }}>logout</span>
+            </div>
+            <h3 style={{ fontSize: '1.25rem', color: 'var(--primary-dark)', marginBottom: '8px' }}>
+              ¿Deseas cerrar tu sesión?
+            </h3>
+            <p style={{ fontSize: '0.9rem', color: 'var(--text-muted)', marginBottom: '24px', lineHeight: '1.5' }}>
+              {currentUser ? (
+                <>
+                  Se cerrará la sesión de <strong>{currentUser.nombres} {currentUser.apellidos}</strong>. Para volver a acceder a tus credenciales o paneles deberás ingresar nuevamente.
+                </>
+              ) : (
+                'Se cerrará la sesión actual en la plataforma.'
+              )}
+            </p>
+            <div style={{ display: 'flex', gap: '12px', justifyContent: 'center', flexWrap: 'wrap' }}>
+              <button
+                className="btn btn-outline"
+                onClick={() => setShowLogoutConfirmModal(false)}
+                style={{ minWidth: '120px' }}
+              >
+                Cancelar
+              </button>
+              <button
+                className="btn btn-urgent"
+                onClick={() => {
+                  setShowLogoutConfirmModal(false);
+                  handleLogout();
+                }}
+                style={{ minWidth: '140px' }}
+              >
+                <span className="material-symbols-outlined">logout</span> Sí, Cerrar Sesión
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* MODAL: CREAR NUEVO EVENTO (RF-006 - Totalmente Funcional)       */}
       {/* ============================================================== */}
       {showCreateEventModal && (
@@ -3342,7 +4369,7 @@ export default function App() {
                     Acceso Institucional ULEAM
                   </h3>
                   <span style={{ fontSize: '0.75rem', color: 'var(--color-success)', fontWeight: 600 }}>
-                    ● Conexión Directa a PostgreSQL (Go REST API + JWT)
+                    Portal Oficial de Acceso Universitario
                   </span>
                 </div>
               </div>
@@ -3399,24 +4426,7 @@ export default function App() {
             </div>
 
             <div style={{ padding: '24px 28px' }}>
-              {/* Callout Explicativo de Arquitectura */}
-              <div
-                style={{
-                  background: 'rgba(0, 47, 108, 0.04)',
-                  border: '1px solid rgba(0, 47, 108, 0.12)',
-                  borderRadius: 'var(--radius-sm)',
-                  padding: '10px 14px',
-                  fontSize: '0.8rem',
-                  color: '#475569',
-                  marginBottom: '20px',
-                  lineHeight: '1.4',
-                }}
-              >
-                <strong style={{ color: 'var(--primary-dark)', display: 'block', marginBottom: '2px' }}>
-                  Arquitectura Nativa PostgreSQL:
-                </strong>
-                Tus credenciales se validan directamente en la tabla <code>usuarios</code> usando <code>bcrypt</code> en Go y emitiendo tokens estándar JWT. Sin dependencia del servicio propietario de Supabase Auth.
-              </div>
+              
 
               {authError && (
                 <div
@@ -3458,48 +4468,42 @@ export default function App() {
                     <label style={{ display: 'block', fontSize: '0.85rem', fontWeight: 600, marginBottom: '6px' }}>
                       Contraseña:
                     </label>
-                    <input
-                      type="password"
-                      className="input-control"
-                      required
-                      placeholder="••••••••"
-                      value={loginForm.contrasena}
-                      onChange={(e) => setLoginForm({ ...loginForm, contrasena: e.target.value })}
-                    />
-                  </div>
-
-                  {/* Acceso Rápido de Prueba para Demostración */}
-                  <div style={{ marginBottom: '20px', background: 'var(--surface-bg)', padding: '12px', borderRadius: 'var(--radius-sm)' }}>
-                    <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)', fontWeight: 600, display: 'block', marginBottom: '8px' }}>
-                      CUENTAS DE PRUEBA EN POSTGRESQL (1-CLIC):
-                    </span>
-                    <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
+                    <div style={{ position: 'relative' }}>
+                      <input
+                        type={showLoginPassword ? 'text' : 'password'}
+                        className="input-control"
+                        required
+                        placeholder="••••••••"
+                        style={{ paddingRight: '42px' }}
+                        value={loginForm.contrasena}
+                        onChange={(e) => setLoginForm({ ...loginForm, contrasena: e.target.value })}
+                      />
                       <button
                         type="button"
-                        className="role-pill-btn"
-                        style={{ fontSize: '0.75rem', padding: '4px 10px' }}
-                        onClick={() => setLoginForm({ correo: 'superadmin@uleam.edu.ec', contrasena: 'Admin123!' })}
+                        onClick={() => setShowLoginPassword(!showLoginPassword)}
+                        style={{
+                          position: 'absolute',
+                          right: '10px',
+                          top: '50%',
+                          transform: 'translateY(-50%)',
+                          background: 'none',
+                          border: 'none',
+                          cursor: 'pointer',
+                          color: 'var(--text-muted)',
+                          display: 'flex',
+                          alignItems: 'center',
+                          padding: '4px',
+                        }}
+                        title={showLoginPassword ? 'Ocultar contraseña' : 'Ver contraseña'}
                       >
-                        SuperAdmin
-                      </button>
-                      <button
-                        type="button"
-                        className="role-pill-btn"
-                        style={{ fontSize: '0.75rem', padding: '4px 10px' }}
-                        onClick={() => setLoginForm({ correo: 'estudiante@uleam.edu.ec', contrasena: 'Admin123!' })}
-                      >
-                        Estudiante
-                      </button>
-                      <button
-                        type="button"
-                        className="role-pill-btn"
-                        style={{ fontSize: '0.75rem', padding: '4px 10px' }}
-                        onClick={() => setLoginForm({ correo: 'gestion@uleam.edu.ec', contrasena: 'Admin123!' })}
-                      >
-                        Personal Gestión
+                        <span className="material-symbols-outlined" style={{ fontSize: '20px' }}>
+                          {showLoginPassword ? 'visibility_off' : 'visibility'}
+                        </span>
                       </button>
                     </div>
                   </div>
+
+                  
 
                   <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '10px' }}>
                     <button
@@ -3613,15 +4617,40 @@ export default function App() {
                     <label style={{ display: 'block', fontSize: '0.85rem', fontWeight: 600, marginBottom: '4px' }}>
                       Contraseña (mínimo 6 caracteres):
                     </label>
-                    <input
-                      type="password"
-                      className="input-control"
-                      required
-                      minLength={6}
-                      placeholder="••••••••"
-                      value={registerForm.contrasena}
-                      onChange={(e) => setRegisterForm({ ...registerForm, contrasena: e.target.value })}
-                    />
+                    <div style={{ position: 'relative' }}>
+                      <input
+                        type={showRegisterPassword ? 'text' : 'password'}
+                        className="input-control"
+                        required
+                        minLength={6}
+                        placeholder="••••••••"
+                        style={{ paddingRight: '42px' }}
+                        value={registerForm.contrasena}
+                        onChange={(e) => setRegisterForm({ ...registerForm, contrasena: e.target.value })}
+                      />
+                      <button
+                        type="button"
+                        onClick={() => setShowRegisterPassword(!showRegisterPassword)}
+                        style={{
+                          position: 'absolute',
+                          right: '10px',
+                          top: '50%',
+                          transform: 'translateY(-50%)',
+                          background: 'none',
+                          border: 'none',
+                          cursor: 'pointer',
+                          color: 'var(--text-muted)',
+                          display: 'flex',
+                          alignItems: 'center',
+                          padding: '4px',
+                        }}
+                        title={showRegisterPassword ? 'Ocultar contraseña' : 'Ver contraseña'}
+                      >
+                        <span className="material-symbols-outlined" style={{ fontSize: '20px' }}>
+                          {showRegisterPassword ? 'visibility_off' : 'visibility'}
+                        </span>
+                      </button>
+                    </div>
                   </div>
 
                   <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '10px' }}>
@@ -3640,7 +4669,7 @@ export default function App() {
                       style={{ display: 'flex', alignItems: 'center', gap: '6px' }}
                     >
                       <span className="material-symbols-outlined">how_to_reg</span>
-                      {authLoading ? 'Creando en PostgreSQL...' : 'Registrar Cuenta'}
+                      {authLoading ? 'Creando cuenta...' : 'Registrar Cuenta'}
                     </button>
                   </div>
                 </form>
@@ -3686,7 +4715,7 @@ export default function App() {
                 </div>
                 <div>
                   <h3 style={{ fontSize: '1.25rem', color: 'var(--primary-dark)', margin: 0 }}>
-                    Mesa de Ayuda y Servicios Académicos
+                    Soporte y Servicios Académicos
                   </h3>
                   <span style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>
                     Universidad Laica Eloy Alfaro de Manabí • Centro de Soporte Integral
@@ -4022,7 +5051,7 @@ export default function App() {
                       style={{ display: 'flex', alignItems: 'center', gap: '6px' }}
                     >
                       <span className="material-symbols-outlined">send</span>
-                      Enviar Solicitud a Mesa de Ayuda
+                      Enviar Solicitud a Soporte
                     </button>
                   </div>
                 </form>
@@ -4099,7 +5128,7 @@ export default function App() {
                           }}
                         >
                           <strong style={{ color: 'var(--primary-dark)', display: 'block', marginBottom: '3px' }}>
-                            Respuesta de la Mesa de Ayuda:
+                            Respuesta del Equipo de Soporte:
                           </strong>
                           <span style={{ color: '#334155', lineHeight: '1.5' }}>{tick.respuesta}</span>
                         </div>
@@ -4140,7 +5169,7 @@ export default function App() {
                       <h4 style={{ margin: 0, fontSize: '1rem', color: 'var(--primary-dark)' }}>Correos Institucionales</h4>
                     </div>
                     <p style={{ fontSize: '0.85rem', color: '#475569', marginBottom: '6px' }}>
-                      <strong>Mesa de Ayuda Eventos:</strong> soporte.eventos@uleam.edu.ec
+                      <strong>Soporte de Eventos:</strong> soporte.eventos@uleam.edu.ec
                     </p>
                     <p style={{ fontSize: '0.85rem', color: '#475569', marginBottom: '6px' }}>
                       <strong>Acreditación y Certificados:</strong> certificacion@uleam.edu.ec
@@ -4185,7 +5214,7 @@ export default function App() {
 
             <div style={{ padding: '16px 28px', borderTop: '1px solid #E2E8F0', display: 'flex', justifyContent: 'flex-end', background: 'var(--surface-container)' }}>
               <button className="btn btn-outline" onClick={() => setShowHelpDeskModal(false)}>
-                Cerrar Mesa de Ayuda
+                Cerrar Soporte
               </button>
             </div>
           </div>
@@ -4351,7 +5380,7 @@ export default function App() {
                 La Universidad Laica Eloy Alfaro de Manabí (ULEAM), a través de la Facultad de Ciencias de la Vida y Tecnologías, es la responsable del tratamiento de los datos personales recopilados con fines estrictamente académicos, de registro, control de asistencia y emisión de certificaciones avaladas.
               </p>
 
-              <h4 style={{ color: 'var(--primary-dark)', marginBottom: '6px' }}>2. Almacenamiento Seguro en PostgreSQL Nativo</h4>
+              <h4 style={{ color: 'var(--primary-dark)', marginBottom: '6px' }}>2. Almacenamiento y Protección de Datos Institucionales</h4>
               <p style={{ marginBottom: '14px' }}>
                 Toda la información institucional y datos de identidad (nombres, cédula, correo institucional) se resguardan en servidores propios de base de datos PostgreSQL. Las contraseñas se almacenan mediante algoritmos de cifrado irreversible <code>bcrypt</code> y los accesos se protegen mediante tokens firmados <code>JWT</code> bajo estándares de seguridad internacional.
               </p>
@@ -4361,9 +5390,9 @@ export default function App() {
                 Los tokens QR generados para los participantes son códigos criptográficos únicos destinados exclusivamente a la validación de ingreso y acreditación en las puertas de los auditorios. Los certificados emitidos cuentan con verificación hash SHA-256 para evitar falsificaciones.
               </p>
 
-              <h4 style={{ color: 'var(--primary-dark)', marginBottom: '6px' }}>4. Derechos ARCO y Mesa de Ayuda</h4>
+              <h4 style={{ color: 'var(--primary-dark)', marginBottom: '6px' }}>4. Derechos ARCO y Soporte Institucional</h4>
               <p style={{ margin: 0 }}>
-                Cualquier participante puede solicitar la actualización, verificación o rectificación de sus datos personales a través de la Mesa de Ayuda Universitaria oficial.
+                Cualquier participante puede solicitar la actualización, verificación o rectificación de sus datos personales a través de el canal de Soporte Institucional oficial.
               </p>
             </div>
 
@@ -4504,7 +5533,7 @@ export default function App() {
                 style={{ display: 'inline-flex', alignItems: 'center', gap: '6px' }}
               >
                 <span className="material-symbols-outlined" style={{ fontSize: '18px' }}>support_agent</span>
-                Abrir Mesa de Ayuda
+                Abrir Soporte
               </button>
             </div>
 
@@ -4615,7 +5644,7 @@ export default function App() {
                       setShowHelpDeskModal(true);
                     }}
                   >
-                    Mesa de Ayuda (Soporte)
+                    Soporte
                   </a>
                 </li>
                 <li>

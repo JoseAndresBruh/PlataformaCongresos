@@ -316,7 +316,7 @@ export default function NotFoundView({
             >
               <div style={{ display: 'flex', alignItems: 'center', gap: '8px', color: 'var(--secondary)', fontWeight: 700, fontSize: '0.95rem' }}>
                 <span className="material-symbols-outlined" style={{ fontSize: '20px' }}>live_help</span>
-                Mesa de Ayuda
+                Soporte Tecnico
               </div>
               <p style={{ margin: 0, fontSize: '0.8rem', color: 'var(--text-secondary)', lineHeight: 1.4 }}>
                 Soporte técnico y preguntas frecuentes universitarias.

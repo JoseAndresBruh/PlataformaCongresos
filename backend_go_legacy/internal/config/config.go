@@ -8,12 +8,15 @@ import (
 )
 
 type Config struct {
-	Port                string
-	DatabaseURL         string
-	JWTSecret           string
-	JWTExpirationHours  int
-	CORSAllowedOrigins  string
-	Env                 string
+	Port               string
+	DatabaseURL        string
+	JWTSecret          string
+	JWTExpirationHours int
+	CORSAllowedOrigins string
+	Env                string
+	SupabaseURL        string
+	SupabaseKey        string
+	SupabaseProjectRef string
 }
 
 func LoadConfig() *Config {
@@ -47,6 +50,13 @@ func LoadConfig() *Config {
 		env = "development"
 	}
 
+	supabaseURL := os.Getenv("SUPABASE_URL")
+	supabaseKey := os.Getenv("SUPABASE_KEY")
+	if supabaseKey == "" {
+		supabaseKey = os.Getenv("SUPABASE_ANON_KEY")
+	}
+	supabaseProjectRef := os.Getenv("SUPABASE_PROJECT_REF")
+
 	return &Config{
 		Port:               port,
 		DatabaseURL:        dbURL,
@@ -54,5 +64,8 @@ func LoadConfig() *Config {
 		JWTExpirationHours: jwtExpHours,
 		CORSAllowedOrigins: corsOrigins,
 		Env:                env,
+		SupabaseURL:        supabaseURL,
+		SupabaseKey:        supabaseKey,
+		SupabaseProjectRef: supabaseProjectRef,
 	}
 }

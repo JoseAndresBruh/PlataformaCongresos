@@ -199,7 +199,7 @@ export default function Search404State({
             }}
           >
             <span className="material-symbols-outlined">help</span>
-            Solicitar Información en Mesa de Ayuda
+            Solicitar Información en Soporte Tecnico
           </button>
         )}
       </div>

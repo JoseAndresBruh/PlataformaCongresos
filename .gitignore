@@ -1,8 +1,36 @@
+# Python
 *__pycache__
+
+# IDE & Editor
 *.vscode
+.vscode/
+.idea/
+
+# Certificados y llaves SSL
 *.pem
+frontend/cert.pem
+frontend/key.pem
+
+# Dependencias y compilaciones
 node_modules/
 dist/
-*.pem
-node_modules/
-dist/
+dist-ssr/
+frontend/dist/
+frontend/node_modules/
+backend/server.exe
+backend/bin/
+backend/obj/
+[Bb]in/
+[Oo]bj/
+
+# Archivos de entorno y credenciales (NUNCA SUBIR A GIT)
+.env
+.env.*
+!.env.example
+*.env
+backend/.env
+backend/.env.*
+frontend/.env
+frontend/.env.*
+!backend/.env.example
+!frontend/.env.example

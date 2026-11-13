@@ -9,11 +9,13 @@ import NotFoundView from './components/NotFoundView';
 import Search404State from './components/Search404State';
 
 // API Base dinámica (compatible con Vite Proxy, Localhost y Red Local Wi-Fi para móviles)
-const API_BASE = typeof window !== 'undefined' && window.location.port === '5173'
-  ? '/api/v1'
-  : (typeof window !== 'undefined' && window.location.hostname !== 'localhost'
-      ? `${window.location.protocol}//${window.location.hostname}:8080/api/v1`
-      : 'http://localhost:8080/api/v1');
+const API_BASE = (typeof import.meta !== 'undefined' && import.meta.env && import.meta.env.VITE_API_BASE && typeof window !== 'undefined' && window.location.port !== '5173')
+  ? import.meta.env.VITE_API_BASE
+  : (typeof window !== 'undefined' && window.location.port === '5173'
+      ? '/api/v1'
+      : (typeof window !== 'undefined' && window.location.hostname !== 'localhost'
+          ? `${window.location.protocol}//${window.location.hostname}:8080/api/v1`
+          : 'http://localhost:8080/api/v1'));
 
 
 const INITIAL_EVENTOS = [
@@ -716,6 +718,68 @@ export default function App() {
   const [showPrivacyModal, setShowPrivacyModal] = useState(false);
   const [showCampusModal, setShowCampusModal] = useState(false);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const [showCertPreviewModal, setShowCertPreviewModal] = useState(false);
+
+  // Control de bloqueo de scroll para dispositivos móviles y escritorio
+  const isAnyOverlayActive = Boolean(
+    mobileMenuOpen ||
+    detailEvent ||
+    showCreateEventModal ||
+    showCertificateValidatorModal ||
+    voucherPreview ||
+    showRegisterModal ||
+    showCredentialModal ||
+    showSurveyModal ||
+    showAuthModal ||
+    showHelpDeskModal ||
+    showFacultyModal ||
+    showPrivacyModal ||
+    showCampusModal ||
+    showLogoutConfirmModal ||
+    showCertPreviewModal
+  );
+
+  const scrollPosRef = useRef(0);
+
+  useEffect(() => {
+    if (typeof window === 'undefined' || typeof document === 'undefined') return;
+
+    if (isAnyOverlayActive) {
+      if (!document.body.classList.contains('modal-open-scroll-lock')) {
+        scrollPosRef.current = window.scrollY || window.pageYOffset || 0;
+        document.body.style.position = 'fixed';
+        document.body.style.top = `-${scrollPosRef.current}px`;
+        document.body.style.width = '100%';
+        document.body.style.overflow = 'hidden';
+        document.body.classList.add('modal-open-scroll-lock');
+        document.documentElement.classList.add('modal-open-scroll-lock');
+      }
+    } else {
+      if (document.body.classList.contains('modal-open-scroll-lock')) {
+        const savedY = scrollPosRef.current;
+        document.body.classList.remove('modal-open-scroll-lock');
+        document.documentElement.classList.remove('modal-open-scroll-lock');
+        document.body.style.position = '';
+        document.body.style.top = '';
+        document.body.style.width = '';
+        document.body.style.overflow = '';
+        window.scrollTo(0, savedY);
+      }
+    }
+
+    return () => {
+      if (document.body.classList.contains('modal-open-scroll-lock')) {
+        const savedY = scrollPosRef.current;
+        document.body.classList.remove('modal-open-scroll-lock');
+        document.documentElement.classList.remove('modal-open-scroll-lock');
+        document.body.style.position = '';
+        document.body.style.top = '';
+        document.body.style.width = '';
+        document.body.style.overflow = '';
+        window.scrollTo(0, savedY);
+      }
+    };
+  }, [isAnyOverlayActive]);
 
   // Mensaje Toast de retroalimentación
   const [toastMessage, setToastMessage] = useState(null);
@@ -2308,6 +2372,13 @@ export default function App() {
             </div>
             <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
               <button
+                className="btn btn-primary btn-sm"
+                onClick={() => setShowCertPreviewModal(true)}
+                style={{ background: '#002F6C', color: '#FFFFFF', display: 'flex', alignItems: 'center', gap: '6px' }}
+              >
+                <span className="material-symbols-outlined">visibility</span> Vista Previa Oficial
+              </button>
+              <button
                 className="btn btn-outline btn-sm"
                 onClick={() => {
                   setValidationCodeInput('ULEAM-2026-ETICA-884920');
@@ -2326,13 +2397,38 @@ export default function App() {
                 className="btn btn-primary btn-sm"
                 onClick={handleDownloadCertPDF}
               >
-                <span className="material-symbols-outlined">download</span> Descargar Certificado (.PDF)
+                <span className="material-symbols-outlined">download</span> Descargar (.PDF)
               </button>
             </div>
           </div>
 
           {/* DIPLOMA ACADÉMICO VISUAL (Visualización Fidedigna A4) */}
-          <div className="diploma-card-container">
+          <div
+            className="diploma-card-container"
+            style={{ cursor: 'pointer', position: 'relative' }}
+            onClick={() => setShowCertPreviewModal(true)}
+            title="Haz clic para abrir la vista previa oficial a pantalla completa"
+          >
+            <div
+              style={{
+                position: 'absolute',
+                top: '12px',
+                right: '12px',
+                background: 'rgba(0, 47, 108, 0.08)',
+                color: '#002F6C',
+                padding: '4px 10px',
+                borderRadius: 'var(--radius-full)',
+                fontSize: '0.72rem',
+                fontWeight: 600,
+                display: 'flex',
+                alignItems: 'center',
+                gap: '4px',
+              }}
+            >
+              <span className="material-symbols-outlined" style={{ fontSize: '15px' }}>zoom_in</span>
+              Ampliar / Vista Previa
+            </div>
+
             {/* Encabezado República y Universidad */}
             <div style={{ fontSize: '0.85rem', fontWeight: 700, letterSpacing: '3px', color: '#666666', marginBottom: '6px' }}>
               REPÚBLICA DEL ECUADOR
@@ -2345,21 +2441,21 @@ export default function App() {
             </div>
 
             {/* Separador Ornamental */}
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '12px', margin: '20px auto 14px', maxWidth: '400px' }}>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '12px', margin: '16px auto 12px', maxWidth: '400px' }}>
               <div style={{ flex: 1, height: '1.5px', background: '#C59B27' }}></div>
               <span className="material-symbols-outlined" style={{ color: '#002F6C', fontSize: '20px' }}>school</span>
               <div style={{ flex: 1, height: '1.5px', background: '#C59B27' }}></div>
             </div>
 
-            <p style={{ fontStyle: 'italic', color: '#555555', fontSize: '1.05rem', margin: '10px 0' }}>
+            <p style={{ fontStyle: 'italic', color: '#555555', fontSize: '1.05rem', margin: '8px 0' }}>
               El Honorable Consejo Directivo y el Decanato de Facultad otorgan el presente:
             </p>
 
             {/* Título de Certificado */}
-            <div style={{ fontFamily: 'Georgia, serif', fontSize: 'clamp(1.8rem, 5vw, 2.8rem)', fontWeight: 900, color: '#002F6C', letterSpacing: '2px', margin: '14px 0 4px' }}>
+            <div style={{ fontFamily: 'Georgia, serif', fontSize: 'clamp(1.8rem, 5vw, 2.8rem)', fontWeight: 900, color: '#002F6C', letterSpacing: '2px', margin: '10px 0 4px' }}>
               CERTIFICADO
             </div>
-            <div style={{ fontSize: '0.85rem', fontWeight: 700, letterSpacing: '4px', color: '#888888', marginBottom: '24px' }}>
+            <div style={{ fontSize: '0.85rem', fontWeight: 700, letterSpacing: '4px', color: '#888888', marginBottom: '18px' }}>
               DE ASISTENCIA Y APROBACIÓN ACADÉMICA
             </div>
 
@@ -2372,7 +2468,7 @@ export default function App() {
                 fontSize: 'clamp(1.4rem, 4vw, 2.4rem)',
                 fontWeight: 800,
                 color: '#C59B27',
-                margin: '10px auto 4px',
+                margin: '8px auto 4px',
                 borderBottom: '2px solid rgba(197, 155, 39, 0.4)',
                 display: 'inline-block',
                 paddingBottom: '4px',
@@ -2382,18 +2478,18 @@ export default function App() {
             >
               Karla Jamileth Andrade Mendoza
             </div>
-            <div style={{ fontSize: '0.9rem', color: '#555555', marginBottom: '20px' }}>
+            <div style={{ fontSize: '0.9rem', color: '#555555', marginBottom: '16px' }}>
               Cédula de Identidad: <strong>1317890123</strong>
             </div>
 
             {/* Texto Académico de Respaldo */}
-            <p style={{ fontSize: '1.05rem', color: '#333333', maxWidth: '780px', margin: '0 auto 16px', lineHeight: '1.6' }}>
+            <p style={{ fontSize: '1.05rem', color: '#333333', maxWidth: '780px', margin: '0 auto 14px', lineHeight: '1.6' }}>
               Por haber acreditado la asistencia reglamentaria y aprobación satisfactoria de las jornadas académicas del{' '}
               <strong style={{ color: '#002F6C' }}>"Seminario de Ética Profesional en la Era de la IA"</strong>, llevado a cabo del 12 al 15 de Septiembre de 2026, con una carga curricular de{' '}
               <strong style={{ color: '#00875A' }}>40 Horas Académicas</strong> debidamente avaladas por las autoridades universitarias.
             </p>
 
-            <div style={{ fontSize: '0.9rem', color: '#666666', marginBottom: '36px' }}>
+            <div style={{ fontSize: '0.9rem', color: '#666666', marginBottom: 'clamp(16px, 3vw, 28px)' }}>
               Manta, Manabí — República del Ecuador, 12 de Septiembre de 2026.
             </div>
 
@@ -2401,11 +2497,11 @@ export default function App() {
             <div className="diploma-footer-grid">
 
               {/* Caja Criptográfica y QR */}
-              <div style={{ display: 'flex', alignItems: 'center', gap: '12px', textAlign: 'left', background: '#FFFFFF', padding: '10px', borderRadius: '8px', border: '1px solid #E2E8F0' }}>
+              <div className="diploma-qr-col" style={{ display: 'flex', alignItems: 'center', gap: '12px', textAlign: 'left', background: '#FFFFFF', padding: '10px', borderRadius: '8px', border: '1px solid #E2E8F0' }}>
                 <img
                   src="https://api.qrserver.com/v1/create-qr-code/?size=90x90&data=https://eventos.uleam.edu.ec/validar?code=ULEAM-2026-ETICA-884920"
                   alt="QR Validación"
-                  style={{ width: '70px', height: '70px', display: 'block' }}
+                  style={{ width: '65px', height: '65px', display: 'block', flexShrink: 0 }}
                 />
                 <div style={{ fontSize: '0.68rem', fontFamily: 'monospace', color: '#555555' }}>
                   <div style={{ fontWeight: 700, color: '#002F6C', marginBottom: '2px' }}>VALIDACIÓN OFICIAL</div>
@@ -2422,13 +2518,13 @@ export default function App() {
                   <div
                     style={{
                       position: 'absolute',
-                      top: '-65px',
+                      top: 'clamp(-45px, -6vw, -60px)',
                       left: '50%',
                       transform: 'translateX(-50%)',
-                      width: '74px',
-                      height: '74px',
+                      width: '64px',
+                      height: '64px',
                       borderRadius: '50%',
-                      border: '3px solid #8B0000',
+                      border: '2.5px solid #8B0000',
                       outline: '1.5px dashed #C59B27',
                       color: '#8B0000',
                       display: 'flex',
@@ -2440,10 +2536,11 @@ export default function App() {
                       opacity: 0.85,
                       pointerEvents: 'none',
                       lineHeight: '1.1',
+                      background: 'rgba(255, 255, 255, 0.75)',
                     }}
                   >
                     <span>★ ULEAM ★</span>
-                    <strong style={{ fontSize: '0.65rem', color: '#002F6C' }}>RECTORADO</strong>
+                    <strong style={{ fontSize: '0.6rem', color: '#002F6C' }}>RECTORADO</strong>
                     <span>ECUADOR</span>
                   </div>
                 )}
@@ -2463,9 +2560,9 @@ export default function App() {
                   )}
                 </div>
                 <div style={{ width: '85%', height: '1.5px', background: '#002F6C', margin: '0 auto 6px' }}></div>
-                <strong style={{ fontSize: '0.88rem', color: '#002F6C', display: 'block' }}>{authorityConfig.nombre}</strong>
-                <span style={{ fontSize: '0.74rem', color: '#C59B27', fontWeight: 600, display: 'block' }}>{authorityConfig.cargo}</span>
-                <span style={{ fontSize: '0.68rem', color: '#777777', display: 'block' }}>{authorityConfig.resolucion}</span>
+                <strong style={{ fontSize: '0.85rem', color: '#002F6C', display: 'block' }}>{authorityConfig.nombre}</strong>
+                <span style={{ fontSize: '0.72rem', color: '#C59B27', fontWeight: 600, display: 'block' }}>{authorityConfig.cargo}</span>
+                <span style={{ fontSize: '0.65rem', color: '#777777', display: 'block' }}>{authorityConfig.resolucion}</span>
               </div>
 
               {/* Firma 2: Coordinación Académica */}
@@ -2476,9 +2573,9 @@ export default function App() {
                   </div>
                 </div>
                 <div style={{ width: '85%', height: '1.5px', background: '#002F6C', margin: '0 auto 6px' }}></div>
-                <strong style={{ fontSize: '0.88rem', color: '#002F6C', display: 'block' }}>Dr. Jonny Pérez Véliz, PhD.</strong>
-                <span style={{ fontSize: '0.74rem', color: '#555555', fontWeight: 600, display: 'block' }}>Director Académico del Evento</span>
-                <span style={{ fontSize: '0.68rem', color: '#777777', display: 'block' }}>Facultad Cs. de la Vida y Tecnologías</span>
+                <strong style={{ fontSize: '0.85rem', color: '#002F6C', display: 'block' }}>Dr. Jonny Pérez Véliz, PhD.</strong>
+                <span style={{ fontSize: '0.72rem', color: '#555555', fontWeight: 600, display: 'block' }}>Director Académico del Evento</span>
+                <span style={{ fontSize: '0.65rem', color: '#777777', display: 'block' }}>Facultad Cs. de la Vida y Tecnologías</span>
               </div>
             </div>
           </div>
@@ -2957,7 +3054,6 @@ export default function App() {
                           style={{ fontSize: '0.8rem', padding: '4px 10px' }}
                           onClick={() => {
                             setDetailEvent(ev);
-                            setShowEventDetailsModal(true);
                           }}
                         >
                           Ver Detalle
@@ -3060,7 +3156,7 @@ export default function App() {
           </div>
 
           <div className="table-responsive-wrapper">
-            <div className="table-scroll-hint">Desliza horizontalmente para ver todas las columnas ➔</div>
+            <div className="table-scroll-hint">Desliza horizontalmente para ver todas las columnas</div>
             <table style={{ width: '100%', minWidth: '700px', borderCollapse: 'collapse', textAlign: 'left', fontSize: '0.9rem' }}>
               <thead style={{ background: 'var(--surface-container)', color: 'var(--primary-dark)' }}>
                 <tr>
@@ -3448,7 +3544,7 @@ export default function App() {
 
                     <div>
                       <strong style={{ display: 'block', fontSize: '0.92rem', color: uploadedQrFileName ? 'var(--color-success)' : 'var(--primary-dark)' }}>
-                        {uploadedQrFileName ? `✓ Archivo cargado: ${uploadedQrFileName}` : 'Seleccionar o Arrastrar Foto / Captura QR'}
+                        {uploadedQrFileName ? `Archivo cargado: ${uploadedQrFileName}` : 'Seleccionar o Arrastrar Foto / Captura QR'}
                       </strong>
                       <span style={{ display: 'block', fontSize: '0.78rem', color: 'var(--text-muted)', marginTop: '2px' }}>
                         {uploadedQrFileName
@@ -3629,7 +3725,7 @@ export default function App() {
             {/* MODAL: CONFIRMACIÓN DE CIERRE DE SESIÓN */}
       {showLogoutConfirmModal && (
         <div
-          className="modal-backdrop"
+          className="modal-backdrop modal-overlay"
           style={{
             position: 'fixed',
             inset: 0,
@@ -3640,6 +3736,8 @@ export default function App() {
             justifyContent: 'center',
             zIndex: 10000,
             padding: '20px',
+            touchAction: 'none',
+            overscrollBehavior: 'contain',
           }}
         >
           <div
@@ -3891,34 +3989,41 @@ export default function App() {
       {/* ============================================================== */}
       {showCertificateValidatorModal && (
         <div className="modal-overlay" onClick={() => setShowCertificateValidatorModal(false)}>
-          <div className="modal-box" onClick={(e) => e.stopPropagation()}>
-            <div style={{ padding: '24px 28px', borderBottom: '1px solid rgba(0, 47, 108, 0.1)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                <span className="material-symbols-outlined" style={{ color: 'var(--primary-container)', fontSize: '26px' }}>verified_user</span>
-                <h3 style={{ fontSize: '1.25rem' }}>Portal de Validación de Certificados</h3>
+          <div className="modal-box" style={{ maxWidth: '640px' }} onClick={(e) => e.stopPropagation()}>
+            <div className="modal-header-responsive">
+              <div className="modal-header-content">
+                <span className="material-symbols-outlined" style={{ color: 'var(--primary-container)', fontSize: '28px', flexShrink: 0 }}>
+                  verified_user
+                </span>
+                <div className="modal-header-text">
+                  <h3>Portal de Validación de Certificados</h3>
+                  <span>Verificación Criptográfica y Firma Institucional SHA-256</span>
+                </div>
               </div>
               <button
-                style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)' }}
+                className="modal-header-close-btn"
                 onClick={() => setShowCertificateValidatorModal(false)}
+                aria-label="Cerrar modal"
               >
                 <span className="material-symbols-outlined">close</span>
               </button>
             </div>
 
-            <div style={{ padding: '28px' }}>
+            <div className="modal-body-responsive">
               <form onSubmit={handleValidateCertificate}>
                 <label style={{ display: 'block', fontSize: '0.85rem', fontWeight: 600, marginBottom: '6px' }}>
                   Código Alfanumérico del Certificado (o escanear QR):
                 </label>
-                <div style={{ display: 'flex', gap: '10px', marginBottom: '20px' }}>
+                <div style={{ display: 'flex', gap: '10px', marginBottom: '20px', flexWrap: 'wrap' }}>
                   <input
                     type="text"
                     className="input-control"
+                    style={{ flex: '1 1 200px' }}
                     placeholder="Ej: ULEAM-2026-ETICA-884920"
                     value={validationCodeInput}
                     onChange={(e) => setValidationCodeInput(e.target.value)}
                   />
-                  <button type="submit" className="btn btn-primary">
+                  <button type="submit" className="btn btn-primary" style={{ flex: '0 0 auto' }}>
                     <span className="material-symbols-outlined">search</span> Verificar
                   </button>
                 </div>
@@ -4686,45 +4791,38 @@ export default function App() {
         <div className="modal-overlay" onClick={() => setShowHelpDeskModal(false)}>
           <div className="modal-box" style={{ maxWidth: '820px', maxHeight: '90vh', overflowY: 'auto' }} onClick={(e) => e.stopPropagation()}>
             {/* Cabecera Mesa de Ayuda */}
-            <div
-              style={{
-                padding: '24px 28px',
-                borderBottom: '1px solid rgba(0, 47, 108, 0.1)',
-                display: 'flex',
-                justifyContent: 'space-between',
-                alignItems: 'center',
-                background: 'linear-gradient(135deg, var(--surface-container) 0%, #FFFFFF 100%)',
-              }}
-            >
-              <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+            <div className="modal-header-responsive" style={{ background: 'linear-gradient(135deg, var(--surface-container) 0%, #FFFFFF 100%)' }}>
+              <div className="modal-header-content">
                 <div
                   style={{
-                    width: '44px',
-                    height: '44px',
+                    width: '42px',
+                    height: '42px',
                     borderRadius: '12px',
                     background: 'var(--primary-container)',
                     color: '#FFFFFF',
                     display: 'flex',
                     alignItems: 'center',
                     justifyContent: 'center',
+                    flexShrink: 0,
                   }}
                 >
-                  <span className="material-symbols-outlined" style={{ fontSize: '26px' }}>
+                  <span className="material-symbols-outlined" style={{ fontSize: '24px' }}>
                     support_agent
                   </span>
                 </div>
-                <div>
-                  <h3 style={{ fontSize: '1.25rem', color: 'var(--primary-dark)', margin: 0 }}>
+                <div className="modal-header-text">
+                  <h3>
                     Soporte y Servicios Académicos
                   </h3>
-                  <span style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>
-                    Universidad Laica Eloy Alfaro de Manabí • Centro de Soporte Integral
+                  <span>
+                    ULEAM • Centro de Soporte Integral
                   </span>
                 </div>
               </div>
               <button
-                style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)' }}
+                className="modal-header-close-btn"
                 onClick={() => setShowHelpDeskModal(false)}
+                aria-label="Cerrar soporte"
               >
                 <span className="material-symbols-outlined">close</span>
               </button>
@@ -4918,7 +5016,7 @@ export default function App() {
                     <div>
                       <strong>¿No encontraste lo que buscabas?</strong>
                       <p style={{ fontSize: '0.82rem', color: 'var(--text-muted)', margin: 0 }}>
-                        Crea una solicitud formal en la Mesa de Ayuda y un asesor te responderá.
+                        Crea una solicitud formal en Soporte Tecnico y un asesor te responderá.
                       </p>
                     </div>
                     <button
@@ -5212,10 +5310,225 @@ export default function App() {
               )}
             </div>
 
-            <div style={{ padding: '16px 28px', borderTop: '1px solid #E2E8F0', display: 'flex', justifyContent: 'flex-end', background: 'var(--surface-container)' }}>
-              <button className="btn btn-outline" onClick={() => setShowHelpDeskModal(false)}>
+            <div className="modal-actions-responsive" style={{ padding: '14px 20px', borderTop: '1px solid #E2E8F0', background: 'var(--surface-container)', margin: 0 }}>
+              <button className="btn btn-outline" style={{ minWidth: '140px' }} onClick={() => setShowHelpDeskModal(false)}>
                 Cerrar Soporte
               </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ============================================================== */}
+      {/* MODAL: VISTA PREVIA EXCLUSIVA DEL CERTIFICADO (CINEMA / LIGHTBOX) */}
+      {/* ============================================================== */}
+      {showCertPreviewModal && (
+        <div className="cert-preview-overlay" onClick={() => setShowCertPreviewModal(false)}>
+          <div className="cert-preview-toolbar" onClick={(e) => e.stopPropagation()}>
+            <div className="cert-preview-toolbar-title">
+              <span className="material-symbols-outlined" style={{ color: '#C59B27', fontSize: '26px' }}>
+                workspace_premium
+              </span>
+              <div>
+                <h3 style={{ margin: 0, fontWeight: 700 }}>Vista Previa Oficial del Certificado</h3>
+                <span style={{ fontSize: '0.72rem', color: '#94A3B8', display: 'block' }}>
+                  Código: ULEAM-2026-ETICA-884920 • Documento Académico Acreditado
+                </span>
+              </div>
+            </div>
+
+            <div className="cert-preview-toolbar-actions">
+              <button
+                className="btn btn-outline btn-sm"
+                style={{ color: '#FFFFFF', borderColor: 'rgba(255,255,255,0.3)', padding: '6px 12px', fontSize: '0.8rem' }}
+                onClick={handlePrintCert}
+              >
+                <span className="material-symbols-outlined" style={{ fontSize: '18px' }}>print</span>
+                Imprimir
+              </button>
+              <button
+                className="btn btn-primary btn-sm"
+                style={{ background: '#C59B27', color: '#002F6C', border: 'none', fontWeight: 700, padding: '6px 12px', fontSize: '0.8rem' }}
+                onClick={handleDownloadCertPDF}
+              >
+                <span className="material-symbols-outlined" style={{ fontSize: '18px' }}>download</span>
+                Descargar (.PDF)
+              </button>
+              <button
+                className="modal-header-close-btn"
+                style={{ background: 'rgba(255,255,255,0.15)', color: '#FFFFFF' }}
+                onClick={() => setShowCertPreviewModal(false)}
+                aria-label="Cerrar vista previa"
+              >
+                <span className="material-symbols-outlined">close</span>
+              </button>
+            </div>
+          </div>
+
+          <div className="cert-preview-body" onClick={(e) => e.stopPropagation()}>
+            <div className="cert-preview-hint">
+              <span className="material-symbols-outlined" style={{ fontSize: '18px' }}>screen_rotation</span>
+              <span>Tip: Gira tu móvil a horizontal para ver el diploma en tamaño completo A4</span>
+            </div>
+
+            <div className="cert-preview-card-wrap">
+              <div
+                className="diploma-card-container"
+                style={{
+                  background: '#FFFFFF',
+                  boxShadow: '0 25px 60px rgba(0, 0, 0, 0.7)',
+                  width: '100%',
+                  maxWidth: '960px',
+                  cursor: 'default',
+                }}
+              >
+                {/* Encabezado República y Universidad */}
+                <div style={{ fontSize: '0.8rem', fontWeight: 700, letterSpacing: '3px', color: '#666666', marginBottom: '4px' }}>
+                  REPÚBLICA DEL ECUADOR
+                </div>
+                <h1 style={{ fontFamily: 'Georgia, serif', fontSize: 'clamp(1.2rem, 3.2vw, 1.9rem)', color: '#002F6C', fontWeight: 800, margin: '2px 0', lineHeight: 1.2 }}>
+                  UNIVERSIDAD LAICA ELOY ALFARO DE MANABÍ
+                </h1>
+                <div style={{ fontSize: 'clamp(0.85rem, 2vw, 1rem)', fontWeight: 700, color: '#C59B27', letterSpacing: '1px' }}>
+                  FACULTAD DE CIENCIAS DE LA VIDA Y TECNOLOGÍAS
+                </div>
+
+                {/* Separador Ornamental */}
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '10px', margin: '14px auto 10px', maxWidth: '360px' }}>
+                  <div style={{ flex: 1, height: '1.5px', background: '#C59B27' }}></div>
+                  <span className="material-symbols-outlined" style={{ color: '#002F6C', fontSize: '18px' }}>school</span>
+                  <div style={{ flex: 1, height: '1.5px', background: '#C59B27' }}></div>
+                </div>
+
+                <p style={{ fontStyle: 'italic', color: '#555555', fontSize: 'clamp(0.85rem, 1.8vw, 0.95rem)', margin: '6px 0' }}>
+                  El Honorable Consejo Directivo y el Decanato de Facultad otorgan el presente:
+                </p>
+
+                {/* Título de Certificado */}
+                <div style={{ fontFamily: 'Georgia, serif', fontSize: 'clamp(1.5rem, 4.5vw, 2.5rem)', fontWeight: 900, color: '#002F6C', letterSpacing: '2px', margin: '8px 0 2px' }}>
+                  CERTIFICADO
+                </div>
+                <div style={{ fontSize: 'clamp(0.72rem, 1.5vw, 0.82rem)', fontWeight: 700, letterSpacing: '3px', color: '#888888', marginBottom: '14px' }}>
+                  DE ASISTENCIA Y APROBACIÓN ACADÉMICA
+                </div>
+
+                <div style={{ fontSize: '0.85rem', color: '#666666' }}>Conferido con honores a:</div>
+
+                {/* Nombre del Participante */}
+                <div
+                  style={{
+                    fontFamily: 'Georgia, serif',
+                    fontSize: 'clamp(1.2rem, 3.6vw, 2.1rem)',
+                    fontWeight: 800,
+                    color: '#C59B27',
+                    margin: '6px auto 2px',
+                    borderBottom: '2px solid rgba(197, 155, 39, 0.4)',
+                    display: 'inline-block',
+                    paddingBottom: '2px',
+                    wordBreak: 'break-word',
+                    maxWidth: '100%',
+                  }}
+                >
+                  Karla Jamileth Andrade Mendoza
+                </div>
+                <div style={{ fontSize: '0.82rem', color: '#555555', marginBottom: '12px' }}>
+                  Cédula de Identidad: <strong>1317890123</strong>
+                </div>
+
+                {/* Texto Académico de Respaldo */}
+                <p style={{ fontSize: 'clamp(0.82rem, 1.7vw, 0.95rem)', color: '#333333', maxWidth: '720px', margin: '0 auto 10px', lineHeight: '1.55' }}>
+                  Por haber acreditado la asistencia reglamentaria y aprobación satisfactoria de las jornadas académicas del{' '}
+                  <strong style={{ color: '#002F6C' }}>"Seminario de Ética Profesional en la Era de la IA"</strong>, llevado a cabo del 12 al 15 de Septiembre de 2026, con una carga curricular de{' '}
+                  <strong style={{ color: '#00875A' }}>40 Horas Académicas</strong> debidamente avaladas por las autoridades universitarias.
+                </p>
+
+                <div style={{ fontSize: '0.8rem', color: '#666666', marginBottom: '20px' }}>
+                  Manta, Manabí — República del Ecuador, 12 de Septiembre de 2026.
+                </div>
+
+                {/* Fila Inferior: Bloque Criptográfico + Firmas Oficiales */}
+                <div className="diploma-footer-grid">
+                  {/* Caja Criptográfica y QR */}
+                  <div className="diploma-qr-col" style={{ display: 'flex', alignItems: 'center', gap: '10px', textAlign: 'left', background: '#FFFFFF', padding: '8px 12px', borderRadius: '8px', border: '1px solid #E2E8F0' }}>
+                    <img
+                      src="https://api.qrserver.com/v1/create-qr-code/?size=90x90&data=https://eventos.uleam.edu.ec/validar?code=ULEAM-2026-ETICA-884920"
+                      alt="QR Validación"
+                      style={{ width: '60px', height: '60px', display: 'block', flexShrink: 0 }}
+                    />
+                    <div style={{ fontSize: '0.64rem', fontFamily: 'monospace', color: '#555555' }}>
+                      <div style={{ fontWeight: 700, color: '#002F6C', marginBottom: '1px' }}>VALIDACIÓN OFICIAL</div>
+                      <div>CÓD: ULEAM-2026-ETICA</div>
+                      <div>HASH: SHA256: 8f9b4c...</div>
+                      <div style={{ color: 'var(--color-success)', marginTop: '2px' }}>● Válido y Vigente</div>
+                    </div>
+                  </div>
+
+                  {/* Sello Oficial y Firma 1: Autoridad SuperAdmin (Dinámica) */}
+                  <div style={{ textAlign: 'center', position: 'relative' }}>
+                    {authorityConfig.selloActivo !== false && (
+                      <div
+                        style={{
+                          position: 'absolute',
+                          top: '-45px',
+                          left: '50%',
+                          transform: 'translateX(-50%)',
+                          width: '58px',
+                          height: '58px',
+                          borderRadius: '50%',
+                          border: '2px solid #8B0000',
+                          outline: '1px dashed #C59B27',
+                          color: '#8B0000',
+                          display: 'flex',
+                          flexDirection: 'column',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          fontSize: '0.42rem',
+                          fontWeight: 800,
+                          opacity: 0.85,
+                          pointerEvents: 'none',
+                          lineHeight: '1.1',
+                          background: 'rgba(255, 255, 255, 0.75)',
+                        }}
+                      >
+                        <span>★ ULEAM ★</span>
+                        <strong style={{ fontSize: '0.55rem', color: '#002F6C' }}>RECTORADO</strong>
+                        <span>ECUADOR</span>
+                      </div>
+                    )}
+
+                    <div style={{ height: '45px', display: 'flex', alignItems: 'flex-end', justifyContent: 'center', marginBottom: '2px' }}>
+                      {authorityConfig.firmaUrl ? (
+                        <img
+                          src={authorityConfig.firmaUrl}
+                          alt="Firma Autoridad"
+                          style={{ maxHeight: '45px', maxWidth: '140px', objectFit: 'contain' }}
+                        />
+                      ) : (
+                        <div style={{ fontFamily: 'Brush Script MT, cursive', fontSize: '1.5rem', color: '#002F6C' }}>
+                          M. Zambrano Z.
+                        </div>
+                      )}
+                    </div>
+                    <div style={{ width: '85%', height: '1.5px', background: '#002F6C', margin: '0 auto 4px' }}></div>
+                    <strong style={{ fontSize: '0.8rem', color: '#002F6C', display: 'block' }}>{authorityConfig.nombre}</strong>
+                    <span style={{ fontSize: '0.7rem', color: '#C59B27', fontWeight: 600, display: 'block' }}>{authorityConfig.cargo}</span>
+                    <span style={{ fontSize: '0.62rem', color: '#777777', display: 'block' }}>{authorityConfig.resolucion}</span>
+                  </div>
+
+                  {/* Firma 2: Coordinación Académica */}
+                  <div style={{ textAlign: 'center' }}>
+                    <div style={{ height: '45px', display: 'flex', alignItems: 'flex-end', justifyContent: 'center', marginBottom: '2px' }}>
+                      <div style={{ fontFamily: 'Brush Script MT, cursive', fontSize: '1.5rem', color: '#002F6C' }}>
+                        Jonny Pérez Véliz
+                      </div>
+                    </div>
+                    <div style={{ width: '85%', height: '1.5px', background: '#002F6C', margin: '0 auto 4px' }}></div>
+                    <strong style={{ fontSize: '0.8rem', color: '#002F6C', display: 'block' }}>Dr. Jonny Pérez Véliz, PhD.</strong>
+                    <span style={{ fontSize: '0.7rem', color: '#555555', fontWeight: 600, display: 'block' }}>Director Académico del Evento</span>
+                    <span style={{ fontSize: '0.62rem', color: '#777777', display: 'block' }}>Facultad Cs. de la Vida y Tecnologías</span>
+                  </div>
+                </div>
+              </div>
             </div>
           </div>
         </div>
@@ -5227,38 +5540,30 @@ export default function App() {
       {showFacultyModal && (
         <div className="modal-overlay" onClick={() => setShowFacultyModal(false)}>
           <div className="modal-box" style={{ maxWidth: '680px' }} onClick={(e) => e.stopPropagation()}>
-            <div
-              style={{
-                padding: '24px 28px',
-                borderBottom: '1px solid rgba(0, 47, 108, 0.1)',
-                display: 'flex',
-                justifyContent: 'space-between',
-                alignItems: 'center',
-                background: 'var(--surface-container)',
-              }}
-            >
-              <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                <span className="material-symbols-outlined" style={{ color: 'var(--primary-container)', fontSize: '26px' }}>
+            <div className="modal-header-responsive">
+              <div className="modal-header-content">
+                <span className="material-symbols-outlined" style={{ color: 'var(--primary-container)', fontSize: '28px', flexShrink: 0 }}>
                   domain
                 </span>
-                <div>
-                  <h3 style={{ fontSize: '1.25rem', color: 'var(--primary-dark)', margin: 0 }}>
+                <div className="modal-header-text">
+                  <h3>
                     {FACULTY_DATA[selectedFaculty]?.nombre}
                   </h3>
-                  <span className="chip chip-primary" style={{ fontSize: '0.72rem', marginTop: '4px' }}>
+                  <span className="chip chip-primary" style={{ fontSize: '0.72rem', marginTop: '4px', display: 'inline-block' }}>
                     {FACULTY_DATA[selectedFaculty]?.siglas}
                   </span>
                 </div>
               </div>
               <button
-                style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)' }}
+                className="modal-header-close-btn"
                 onClick={() => setShowFacultyModal(false)}
+                aria-label="Cerrar modal"
               >
                 <span className="material-symbols-outlined">close</span>
               </button>
             </div>
 
-            <div style={{ padding: '26px 28px' }}>
+            <div className="modal-body-responsive">
               {/* Selector de Facultades */}
               <div style={{ display: 'flex', gap: '8px', marginBottom: '20px', flexWrap: 'wrap' }}>
                 <button
@@ -5319,7 +5624,7 @@ export default function App() {
                 </span>
               </div>
 
-              <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '10px' }}>
+              <div className="modal-actions-responsive">
                 <button className="btn btn-outline" onClick={() => setShowFacultyModal(false)}>
                   Cerrar
                 </button>
@@ -5343,38 +5648,30 @@ export default function App() {
       {showPrivacyModal && (
         <div className="modal-overlay" onClick={() => setShowPrivacyModal(false)}>
           <div className="modal-box" style={{ maxWidth: '640px' }} onClick={(e) => e.stopPropagation()}>
-            <div
-              style={{
-                padding: '24px 28px',
-                borderBottom: '1px solid rgba(0, 47, 108, 0.1)',
-                display: 'flex',
-                justifyContent: 'space-between',
-                alignItems: 'center',
-                background: 'var(--surface-container)',
-              }}
-            >
-              <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                <span className="material-symbols-outlined" style={{ color: 'var(--primary-container)', fontSize: '26px' }}>
+            <div className="modal-header-responsive">
+              <div className="modal-header-content">
+                <span className="material-symbols-outlined" style={{ color: 'var(--primary-container)', fontSize: '28px', flexShrink: 0 }}>
                   policy
                 </span>
-                <div>
-                  <h3 style={{ fontSize: '1.25rem', color: 'var(--primary-dark)', margin: 0 }}>
+                <div className="modal-header-text">
+                  <h3>
                     Política de Privacidad y Tratamiento de Datos
                   </h3>
-                  <span style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>
+                  <span>
                     Conforme a la Ley Orgánica de Protección de Datos Personales (Ecuador)
                   </span>
                 </div>
               </div>
               <button
-                style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)' }}
+                className="modal-header-close-btn"
                 onClick={() => setShowPrivacyModal(false)}
+                aria-label="Cerrar modal"
               >
                 <span className="material-symbols-outlined">close</span>
               </button>
             </div>
 
-            <div style={{ padding: '26px 28px', maxHeight: '65vh', overflowY: 'auto', fontSize: '0.88rem', color: '#475569', lineHeight: '1.6' }}>
+            <div className="modal-body-responsive" style={{ fontSize: '0.88rem', color: '#475569', lineHeight: '1.6' }}>
               <h4 style={{ color: 'var(--primary-dark)', marginBottom: '6px' }}>1. Responsable del Tratamiento</h4>
               <p style={{ marginBottom: '14px' }}>
                 La Universidad Laica Eloy Alfaro de Manabí (ULEAM), a través de la Facultad de Ciencias de la Vida y Tecnologías, es la responsable del tratamiento de los datos personales recopilados con fines estrictamente académicos, de registro, control de asistencia y emisión de certificaciones avaladas.
@@ -5391,15 +5688,15 @@ export default function App() {
               </p>
 
               <h4 style={{ color: 'var(--primary-dark)', marginBottom: '6px' }}>4. Derechos ARCO y Soporte Institucional</h4>
-              <p style={{ margin: 0 }}>
+              <p style={{ marginBottom: '14px' }}>
                 Cualquier participante puede solicitar la actualización, verificación o rectificación de sus datos personales a través de el canal de Soporte Institucional oficial.
               </p>
-            </div>
 
-            <div style={{ padding: '16px 28px', borderTop: '1px solid #E2E8F0', display: 'flex', justifyContent: 'flex-end', background: 'var(--surface-container)' }}>
-              <button className="btn btn-primary" onClick={() => setShowPrivacyModal(false)}>
-                Entendido
-              </button>
+              <div className="modal-actions-responsive">
+                <button className="btn btn-primary" onClick={() => setShowPrivacyModal(false)}>
+                  Entendido y Conforme
+                </button>
+              </div>
             </div>
           </div>
         </div>
@@ -5411,40 +5708,32 @@ export default function App() {
       {showCampusModal && (
         <div className="modal-overlay" onClick={() => setShowCampusModal(false)}>
           <div className="modal-box" style={{ maxWidth: '640px' }} onClick={(e) => e.stopPropagation()}>
-            <div
-              style={{
-                padding: '24px 28px',
-                borderBottom: '1px solid rgba(0, 47, 108, 0.1)',
-                display: 'flex',
-                justifyContent: 'space-between',
-                alignItems: 'center',
-                background: 'var(--surface-container)',
-              }}
-            >
-              <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                <span className="material-symbols-outlined" style={{ color: 'var(--color-urgent)', fontSize: '28px' }}>
+            <div className="modal-header-responsive">
+              <div className="modal-header-content">
+                <span className="material-symbols-outlined" style={{ color: 'var(--color-urgent)', fontSize: '28px', flexShrink: 0 }}>
                   location_on
                 </span>
-                <div>
-                  <h3 style={{ fontSize: '1.25rem', color: 'var(--primary-dark)', margin: 0 }}>
+                <div className="modal-header-text">
+                  <h3>
                     Campus Matriz Manta — ULEAM
                   </h3>
-                  <span style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>
+                  <span>
                     Manabí, República del Ecuador • Sede de Eventos Académicos
                   </span>
                 </div>
               </div>
               <button
-                style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)' }}
+                className="modal-header-close-btn"
                 onClick={() => setShowCampusModal(false)}
+                aria-label="Cerrar modal"
               >
                 <span className="material-symbols-outlined">close</span>
               </button>
             </div>
 
-            <div style={{ padding: '26px 28px' }}>
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(260px, 1fr))', gap: '16px', marginBottom: '20px' }}>
-                <div style={{ background: '#FAF9F6', border: '1px solid #E2E8F0', padding: '16px', borderRadius: '8px' }}>
+            <div className="modal-body-responsive">
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: '14px', marginBottom: '20px' }}>
+                <div style={{ background: '#FAF9F6', border: '1px solid #E2E8F0', padding: '14px', borderRadius: '8px' }}>
                   <strong style={{ fontSize: '0.85rem', color: 'var(--primary-dark)', display: 'block', marginBottom: '4px' }}>
                     DIRECCIÓN OFICIAL:
                   </strong>
@@ -5452,7 +5741,7 @@ export default function App() {
                     Av. Circunvalación, Vía a San Mateo, Manta, Manabí, Ecuador.
                   </p>
                 </div>
-                <div style={{ background: '#FAF9F6', border: '1px solid #E2E8F0', padding: '16px', borderRadius: '8px' }}>
+                <div style={{ background: '#FAF9F6', border: '1px solid #E2E8F0', padding: '14px', borderRadius: '8px' }}>
                   <strong style={{ fontSize: '0.85rem', color: 'var(--primary-dark)', display: 'block', marginBottom: '4px' }}>
                     COORDENADAS GPS:
                   </strong>
@@ -5480,7 +5769,7 @@ export default function App() {
                 </div>
               </div>
 
-              <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '10px' }}>
+              <div className="modal-actions-responsive">
                 <button className="btn btn-outline" onClick={() => setShowCampusModal(false)}>
                   Cerrar
                 </button>

@@ -4,6 +4,10 @@ html, body {
   overflow-x: hidden;
 }
 
+* {
+  -webkit-tap-highlight-color: transparent;
+}
+
 #root {
   min-height: 100vh;
   display: flex;

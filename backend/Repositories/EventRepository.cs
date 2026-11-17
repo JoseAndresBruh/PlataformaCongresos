@@ -4,6 +4,7 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
+using UleamEventos.Api.Configuration;
 using UleamEventos.Api.Models;
 
 namespace UleamEventos.Api.Repositories
@@ -18,8 +19,21 @@ namespace UleamEventos.Api.Repositories
         private readonly List<Asistencia> _asistencias = new();
         private readonly Dictionary<string, Certificado> _certificados = new();
 
-        public EventRepository()
+        private readonly BotNotificationConfig _botConfig;
+
+        public EventRepository(AppConfig? config = null)
         {
+            _botConfig = new BotNotificationConfig
+            {
+                TelegramBotToken = config?.TelegramBotToken ?? string.Empty,
+                TelegramChatId = config?.TelegramChatId ?? string.Empty,
+                WhatsAppPhone = !string.IsNullOrEmpty(config?.WhatsAppPhone) ? config.WhatsAppPhone : "+593987654321",
+                RecordatoriosActivos = true,
+                IntervaloMinutos = config?.NotificationIntervalMinutes > 0 ? config.NotificationIntervalMinutes : 15,
+                UltimoEnvioAt = null,
+                TotalNotificacionesEnviadas = 0
+            };
+
             SeedInitialData();
         }
 
@@ -35,6 +49,7 @@ namespace UleamEventos.Api.Repositories
                 var asistenciaId = Guid.Parse("00000000-0000-0000-0000-000000000004");
                 var estudianteId = Guid.Parse("00000000-0000-0000-0000-000000000006");
                 var externoId = Guid.Parse("00000000-0000-0000-0000-000000000007");
+                var participante3Id = Guid.Parse("00000000-0000-0000-0000-000000000008");
 
                 var defaultHash = "$2a$10$7EqJtq98hPqEX7fNZaFWoOeVdM3.D2k/3g81pB8dJ9WvV0301h9Ua";
 
@@ -110,6 +125,18 @@ namespace UleamEventos.Api.Repositories
                     Rol = Roles.Asistente
                 };
 
+                _usuarios["mbelen.moreira@outlook.com"] = new Usuario
+                {
+                    Id = participante3Id,
+                    Correo = "mbelen.moreira@outlook.com",
+                    ContrasenaHash = defaultHash,
+                    Nombres = "María Belén",
+                    Apellidos = "Moreira Alcívar",
+                    Identificacion = "1319012345",
+                    Institucion = "Colegio de Ingenieros de Manabí",
+                    Rol = Roles.Asistente
+                };
+
                 // 2. Evento Insignia CIIST 2026
                 var ev1Id = Guid.Parse("10000000-0000-0000-0000-000000000001");
                 var cat1Id = Guid.Parse("60000000-0000-0000-0000-000000000001");
@@ -182,7 +209,7 @@ namespace UleamEventos.Api.Repositories
 
                 _eventos[ev1Id.ToString()] = evento1;
 
-                // 3. Inscripción Inicial Confirmada y Credencial QR
+                // 3. Inscripción 1: Pagado (Estudiante Gratuito / Confirmado con QR)
                 var ins1Id = Guid.Parse("70000000-0000-0000-0000-000000000001");
                 var qrToken1 = "ULEAM-QR-70000000-0000-0000-0000-000000000001-TOKEN";
 
@@ -193,6 +220,7 @@ namespace UleamEventos.Api.Repositories
                     UsuarioId = estudianteId,
                     CategoriaId = cat1Id,
                     Estado = EstadosInscripcion.Confirmada,
+                    EstadoPago = EstadosPago.Pagado,
                     RegistradoAt = DateTime.UtcNow.AddHours(-48),
                     EventoNombre = evento1.Nombre,
                     UsuarioNombre = "Karla Jamileth Andrade Mendoza",
@@ -213,7 +241,7 @@ namespace UleamEventos.Api.Repositories
                     EmitidoAt = DateTime.UtcNow.AddHours(-48)
                 };
 
-                // 4. Inscripción 2 con Comprobante Pendiente de Revisión (SLA 24h)
+                // 4. Inscripción 2: Pago en verificación (Comprobante subido, esperando revisión financiera)
                 var ins2Id = Guid.Parse("70000000-0000-0000-0000-000000000002");
                 _inscripciones[ins2Id.ToString()] = new Inscripcion
                 {
@@ -222,6 +250,7 @@ namespace UleamEventos.Api.Repositories
                     UsuarioId = externoId,
                     CategoriaId = cat2Id,
                     Estado = EstadosInscripcion.PendienteRevision,
+                    EstadoPago = EstadosPago.PagoEnVerificacion,
                     RegistradoAt = DateTime.UtcNow.AddHours(-4),
                     EventoNombre = evento1.Nombre,
                     UsuarioNombre = "Javier David Jaramillo Intriago",
@@ -234,7 +263,29 @@ namespace UleamEventos.Api.Repositories
                     EstadoSla = "A_TIEMPO"
                 };
 
-                // 5. Certificado Oficial de Muestra
+                // 5. Inscripción 3: No pagado (Registrado con arancel pendiente sin subir comprobante)
+                var ins3Id = Guid.Parse("70000000-0000-0000-0000-000000000003");
+                _inscripciones[ins3Id.ToString()] = new Inscripcion
+                {
+                    Id = ins3Id,
+                    EventoId = ev1Id,
+                    UsuarioId = participante3Id,
+                    CategoriaId = cat2Id,
+                    Estado = EstadosInscripcion.PendientePago,
+                    EstadoPago = EstadosPago.NoPagado,
+                    RegistradoAt = DateTime.UtcNow.AddHours(-1),
+                    EventoNombre = evento1.Nombre,
+                    UsuarioNombre = "María Belén Moreira Alcívar",
+                    UsuarioCorreo = "mbelen.moreira@outlook.com",
+                    CategoriaNombre = "Profesional / Público General",
+                    CategoriaPrecio = 25.00,
+                    ComprobanteUrl = null,
+                    LimiteRevisionAt = null,
+                    HorasRestantes = 0,
+                    EstadoSla = "A_TIEMPO"
+                };
+
+                // 6. Certificado Oficial de Muestra
                 var certId = Guid.NewGuid();
                 _certificados[certId.ToString()] = new Certificado
                 {
@@ -251,6 +302,44 @@ namespace UleamEventos.Api.Repositories
             {
                 _lock.ExitWriteLock();
             }
+        }
+
+        private static Inscripcion CloneInscripcion(Inscripcion item)
+        {
+            var clone = new Inscripcion
+            {
+                Id = item.Id,
+                EventoId = item.EventoId,
+                UsuarioId = item.UsuarioId,
+                CategoriaId = item.CategoriaId,
+                Estado = item.Estado,
+                EstadoPago = item.EstadoPago,
+                ExoneradoPor = item.ExoneradoPor,
+                NotaExoneracion = item.NotaExoneracion,
+                RegistradoAt = item.RegistradoAt,
+                EventoNombre = item.EventoNombre,
+                UsuarioNombre = item.UsuarioNombre,
+                UsuarioCorreo = item.UsuarioCorreo,
+                CategoriaNombre = item.CategoriaNombre,
+                CategoriaPrecio = item.CategoriaPrecio,
+                ComprobanteUrl = item.ComprobanteUrl,
+                CredencialQr = item.CredencialQr,
+                LimiteRevisionAt = item.LimiteRevisionAt
+            };
+
+            if (clone.LimiteRevisionAt.HasValue && clone.EstadoPago == EstadosPago.PagoEnVerificacion)
+            {
+                var diff = clone.LimiteRevisionAt.Value - DateTime.UtcNow;
+                clone.HorasRestantes = Math.Round(diff.TotalHours, 1);
+                if (diff.TotalHours <= 0)
+                    clone.EstadoSla = "VENCIDO";
+                else if (diff.TotalHours <= 4)
+                    clone.EstadoSla = "URGENTE";
+                else
+                    clone.EstadoSla = "A_TIEMPO";
+            }
+
+            return clone;
         }
 
         public Task<IEnumerable<Evento>> GetEventsAsync(string? estado)
@@ -329,8 +418,8 @@ namespace UleamEventos.Api.Repositories
             _lock.EnterReadLock();
             try
             {
-                _usuarios.TryGetValue(email, out var user);
-                return Task.FromResult(user);
+                _usuarios.TryGetValue(email, out var usr);
+                return Task.FromResult(usr);
             }
             finally
             {
@@ -343,8 +432,8 @@ namespace UleamEventos.Api.Repositories
             _lock.EnterReadLock();
             try
             {
-                var user = _usuarios.Values.FirstOrDefault(u => u.Id == id);
-                return Task.FromResult(user);
+                var usr = _usuarios.Values.FirstOrDefault(u => u.Id == id);
+                return Task.FromResult(usr);
             }
             finally
             {
@@ -358,6 +447,7 @@ namespace UleamEventos.Api.Repositories
                 usuario.Id = Guid.NewGuid();
 
             usuario.CreadoAt = DateTime.UtcNow;
+            usuario.ActualizadoAt = DateTime.UtcNow;
 
             _lock.EnterWriteLock();
             try
@@ -378,17 +468,36 @@ namespace UleamEventos.Api.Repositories
 
             reg.RegistradoAt = DateTime.UtcNow;
 
-            if (comp != null)
+            if (reg.CategoriaPrecio > 0)
             {
-                comp.SubidoAt = DateTime.UtcNow;
-                comp.LimiteRevisionAt = DateTime.UtcNow.AddHours(24);
-                comp.HorasRestantes = 24.0;
-                comp.EstadoSla = "A_TIEMPO";
-                comp.EstadoRevision = EstadosComprobante.EnRevision;
+                if (comp != null || !string.IsNullOrEmpty(reg.ComprobanteUrl))
+                {
+                    reg.Estado = EstadosInscripcion.PendienteRevision;
+                    reg.EstadoPago = EstadosPago.PagoEnVerificacion;
+                    reg.LimiteRevisionAt = DateTime.UtcNow.AddHours(24);
+                    reg.HorasRestantes = 24.0;
+                    reg.EstadoSla = "A_TIEMPO";
 
-                reg.LimiteRevisionAt = comp.LimiteRevisionAt;
-                reg.HorasRestantes = 24.0;
-                reg.EstadoSla = "A_TIEMPO";
+                    if (comp != null)
+                    {
+                        comp.SubidoAt = DateTime.UtcNow;
+                        comp.LimiteRevisionAt = reg.LimiteRevisionAt.Value;
+                        comp.HorasRestantes = 24.0;
+                        comp.EstadoSla = "A_TIEMPO";
+                        comp.EstadoRevision = EstadosComprobante.EnRevision;
+                        comp.EstadoPago = EstadosPago.PagoEnVerificacion;
+                    }
+                }
+                else
+                {
+                    reg.Estado = EstadosInscripcion.PendientePago;
+                    reg.EstadoPago = EstadosPago.NoPagado;
+                }
+            }
+            else
+            {
+                reg.Estado = EstadosInscripcion.Confirmada;
+                reg.EstadoPago = EstadosPago.Pagado;
             }
 
             var qrToken = $"ULEAM-QR-{reg.Id}-{DateTimeOffset.UtcNow.ToUnixTimeSeconds()}";
@@ -401,15 +510,20 @@ namespace UleamEventos.Api.Repositories
                 EmitidoAt = DateTime.UtcNow
             };
 
-            reg.CredencialQr = qrToken;
+            if (reg.EstadoPago == EstadosPago.Pagado)
+            {
+                reg.CredencialQr = qrToken;
+            }
 
             _lock.EnterWriteLock();
             try
             {
                 _inscripciones[reg.Id.ToString()] = reg;
-                _credenciales[qrToken] = cred;
+                if (reg.EstadoPago == EstadosPago.Pagado)
+                {
+                    _credenciales[qrToken] = cred;
+                }
 
-                // Actualizar total inscritos del evento
                 if (_eventos.TryGetValue(reg.EventoId.ToString(), out var ev))
                 {
                     ev.TotalInscritos++;
@@ -434,45 +548,7 @@ namespace UleamEventos.Api.Repositories
                     query = query.Where(i => i.EventoId == eventoId.Value);
                 }
 
-                var list = new List<Inscripcion>();
-                foreach (var item in query)
-                {
-                    var clone = new Inscripcion
-                    {
-                        Id = item.Id,
-                        EventoId = item.EventoId,
-                        UsuarioId = item.UsuarioId,
-                        CategoriaId = item.CategoriaId,
-                        Estado = item.Estado,
-                        ExoneradoPor = item.ExoneradoPor,
-                        NotaExoneracion = item.NotaExoneracion,
-                        RegistradoAt = item.RegistradoAt,
-                        EventoNombre = item.EventoNombre,
-                        UsuarioNombre = item.UsuarioNombre,
-                        UsuarioCorreo = item.UsuarioCorreo,
-                        CategoriaNombre = item.CategoriaNombre,
-                        CategoriaPrecio = item.CategoriaPrecio,
-                        ComprobanteUrl = item.ComprobanteUrl,
-                        CredencialQr = item.CredencialQr,
-                        LimiteRevisionAt = item.LimiteRevisionAt
-                    };
-
-                    // Calcular ventana dinámica SLA de 24 horas
-                    if (clone.LimiteRevisionAt.HasValue && clone.Estado == EstadosInscripcion.PendienteRevision)
-                    {
-                        var diff = clone.LimiteRevisionAt.Value - DateTime.UtcNow;
-                        clone.HorasRestantes = Math.Round(diff.TotalHours, 1);
-                        if (diff.TotalHours <= 0)
-                            clone.EstadoSla = "VENCIDO";
-                        else if (diff.TotalHours <= 4)
-                            clone.EstadoSla = "URGENTE";
-                        else
-                            clone.EstadoSla = "A_TIEMPO";
-                    }
-
-                    list.Add(clone);
-                }
-
+                var list = query.Select(CloneInscripcion).OrderByDescending(i => i.RegistradoAt).ToList();
                 return Task.FromResult<IEnumerable<Inscripcion>>(list);
             }
             finally
@@ -481,15 +557,67 @@ namespace UleamEventos.Api.Repositories
             }
         }
 
-        public Task<bool> UpdateRegistrationStatusAsync(Guid id, string estado, Guid? auditorId)
+        public Task<Inscripcion?> GetRegistrationByIdAsync(Guid id)
         {
-            _lock.EnterWriteLock();
+            _lock.EnterReadLock();
             try
             {
                 if (_inscripciones.TryGetValue(id.ToString(), out var ins))
                 {
-                    ins.Estado = estado;
-                    if (string.Equals(estado, EstadosInscripcion.Confirmada, StringComparison.OrdinalIgnoreCase))
+                    return Task.FromResult<Inscripcion?>(CloneInscripcion(ins));
+                }
+                return Task.FromResult<Inscripcion?>(null);
+            }
+            finally
+            {
+                _lock.ExitReadLock();
+            }
+        }
+
+        public Task<IEnumerable<Inscripcion>> GetRegistrationsByPaymentStatusAsync(string? estadoPago)
+        {
+            _lock.EnterReadLock();
+            try
+            {
+                var query = _inscripciones.Values.AsEnumerable();
+                if (!string.IsNullOrEmpty(estadoPago))
+                {
+                    query = query.Where(i => string.Equals(i.EstadoPago, estadoPago, StringComparison.OrdinalIgnoreCase));
+                }
+                var list = query.Select(CloneInscripcion).OrderByDescending(i => i.RegistradoAt).ToList();
+                return Task.FromResult<IEnumerable<Inscripcion>>(list);
+            }
+            finally
+            {
+                _lock.ExitReadLock();
+            }
+        }
+
+        public Task<bool> UpdatePaymentStatusAsync(Guid id, string nuevoEstadoPago, Guid? auditorId, string? observaciones)
+        {
+            _lock.EnterWriteLock();
+            try
+            {
+                if (!_inscripciones.TryGetValue(id.ToString(), out var ins))
+                {
+                    return Task.FromResult(false);
+                }
+
+                ins.EstadoPago = nuevoEstadoPago;
+                if (!string.IsNullOrEmpty(observaciones))
+                {
+                    ins.NotaExoneracion = observaciones;
+                }
+                if (auditorId.HasValue)
+                {
+                    ins.ExoneradoPor = auditorId;
+                }
+
+                if (string.Equals(nuevoEstadoPago, EstadosPago.Pagado, StringComparison.OrdinalIgnoreCase))
+                {
+                    ins.Estado = EstadosInscripcion.Confirmada;
+
+                    if (string.IsNullOrEmpty(ins.CredencialQr))
                     {
                         var qrToken = $"ULEAM-QR-{ins.Id}-{DateTimeOffset.UtcNow.ToUnixTimeSeconds()}";
                         ins.CredencialQr = qrToken;
@@ -502,6 +630,120 @@ namespace UleamEventos.Api.Repositories
                             EmitidoAt = DateTime.UtcNow
                         };
                     }
+                }
+                else if (string.Equals(nuevoEstadoPago, EstadosPago.Rechazado, StringComparison.OrdinalIgnoreCase))
+                {
+                    ins.Estado = EstadosInscripcion.Rechazada;
+                }
+                else if (string.Equals(nuevoEstadoPago, EstadosPago.PagoEnVerificacion, StringComparison.OrdinalIgnoreCase))
+                {
+                    ins.Estado = EstadosInscripcion.PendienteRevision;
+                    ins.LimiteRevisionAt = DateTime.UtcNow.AddHours(24);
+                }
+                else if (string.Equals(nuevoEstadoPago, EstadosPago.NoPagado, StringComparison.OrdinalIgnoreCase))
+                {
+                    ins.Estado = EstadosInscripcion.PendientePago;
+                }
+
+                return Task.FromResult(true);
+            }
+            finally
+            {
+                _lock.ExitWriteLock();
+            }
+        }
+
+        public Task<BotNotificationConfig> GetBotConfigAsync()
+        {
+            _lock.EnterReadLock();
+            try
+            {
+                return Task.FromResult(new BotNotificationConfig
+                {
+                    TelegramBotToken = _botConfig.TelegramBotToken,
+                    TelegramChatId = _botConfig.TelegramChatId,
+                    WhatsAppPhone = _botConfig.WhatsAppPhone,
+                    RecordatoriosActivos = _botConfig.RecordatoriosActivos,
+                    IntervaloMinutos = _botConfig.IntervaloMinutos,
+                    UltimoEnvioAt = _botConfig.UltimoEnvioAt,
+                    TotalNotificacionesEnviadas = _botConfig.TotalNotificacionesEnviadas
+                });
+            }
+            finally
+            {
+                _lock.ExitReadLock();
+            }
+        }
+
+        public Task UpdateBotConfigAsync(BotNotificationConfig config)
+        {
+            _lock.EnterWriteLock();
+            try
+            {
+                if (config.TelegramBotToken != null)
+                    _botConfig.TelegramBotToken = config.TelegramBotToken;
+                if (config.TelegramChatId != null)
+                    _botConfig.TelegramChatId = config.TelegramChatId;
+                if (config.WhatsAppPhone != null)
+                    _botConfig.WhatsAppPhone = config.WhatsAppPhone;
+                _botConfig.RecordatoriosActivos = config.RecordatoriosActivos;
+                if (config.IntervaloMinutos > 0)
+                    _botConfig.IntervaloMinutos = config.IntervaloMinutos;
+                return Task.CompletedTask;
+            }
+            finally
+            {
+                _lock.ExitWriteLock();
+            }
+        }
+
+        public Task RecordNotificationSentAsync()
+        {
+            _lock.EnterWriteLock();
+            try
+            {
+                _botConfig.UltimoEnvioAt = DateTime.UtcNow;
+                _botConfig.TotalNotificacionesEnviadas++;
+                return Task.CompletedTask;
+            }
+            finally
+            {
+                _lock.ExitWriteLock();
+            }
+        }
+
+        public Task<bool> UpdateRegistrationStatusAsync(Guid id, string estado, Guid? auditorId)
+        {
+            _lock.EnterWriteLock();
+            try
+            {
+                if (_inscripciones.TryGetValue(id.ToString(), out var ins))
+                {
+                    ins.Estado = estado;
+                    ins.ExoneradoPor = auditorId;
+
+                    if (estado == EstadosInscripcion.Confirmada)
+                    {
+                        ins.EstadoPago = EstadosPago.Pagado;
+                        if (string.IsNullOrEmpty(ins.CredencialQr))
+                        {
+                            var qrToken = $"ULEAM-QR-{ins.Id}-{DateTimeOffset.UtcNow.ToUnixTimeSeconds()}";
+                            ins.CredencialQr = qrToken;
+                            _credenciales[qrToken] = new Credencial
+                            {
+                                Id = Guid.NewGuid(),
+                                InscripcionId = ins.Id,
+                                TokenQrSeguro = qrToken,
+                                UrlPdf = $"https://storage.uleam.edu.ec/credenciales/{ins.Id}.pdf",
+                                EmitidoAt = DateTime.UtcNow
+                            };
+                        }
+                    }
+                    else if (estado == EstadosInscripcion.Rechazada)
+                    {
+                        ins.EstadoPago = EstadosPago.Rechazado;
+                    }
+
                     return Task.FromResult(true);
                 }
                 return Task.FromResult(false);
@@ -524,7 +766,6 @@ namespace UleamEventos.Api.Repositories
                 }
                 else
                 {
-                    // Búsqueda alternativa por token directo o ID de inscripción
                     cred = _credenciales.Values.FirstOrDefault(c => c.InscripcionId.ToString().Equals(tokenQr, StringComparison.OrdinalIgnoreCase)
                         || c.TokenQrSeguro.Contains(tokenQr, StringComparison.OrdinalIgnoreCase));
                 }
@@ -541,16 +782,15 @@ namespace UleamEventos.Api.Repositories
                         (null, null, "ACCESO DENEGADO: Inscripción no encontrada", false));
                 }
 
-                if (!string.Equals(ins.Estado, EstadosInscripcion.Confirmada, StringComparison.OrdinalIgnoreCase))
+                if (!string.Equals(ins.Estado, EstadosInscripcion.Confirmada, StringComparison.OrdinalIgnoreCase) ||
+                    !string.Equals(ins.EstadoPago, EstadosPago.Pagado, StringComparison.OrdinalIgnoreCase))
                 {
                     return Task.FromResult<(Asistencia?, Usuario?, string, bool)>(
-                        (null, null, $"ACCESO DENEGADO: Inscripción en estado {ins.Estado} (No confirmada)", false));
+                        (null, null, $"ACCESO DENEGADO: Inscripción no pagada o no confirmada (Estado de pago: {ins.EstadoPago})", false));
                 }
 
-                // Buscar usuario
                 var usr = _usuarios.Values.FirstOrDefault(u => u.Id == ins.UsuarioId);
 
-                // Verificar asistencia duplicada
                 var targetSesion = sesionId ?? Guid.Empty;
                 var duplicate = _asistencias.Any(a => a.InscripcionId == ins.Id && a.SesionId == targetSesion);
                 if (duplicate)
@@ -570,7 +810,6 @@ namespace UleamEventos.Api.Repositories
 
                 _asistencias.Add(asistencia);
 
-                // Incrementar total checkins del evento
                 if (_eventos.TryGetValue(ins.EventoId.ToString(), out var ev))
                 {
                     ev.TotalCheckins++;
@@ -591,8 +830,8 @@ namespace UleamEventos.Api.Repositories
             try
             {
                 int totalInscritos = _inscripciones.Count;
-                int pendientes = _inscripciones.Values.Count(i => i.Estado == EstadosInscripcion.PendienteRevision);
-                double ingresos = _inscripciones.Values.Where(i => i.Estado == EstadosInscripcion.Confirmada).Sum(i => i.CategoriaPrecio);
+                int pendientes = _inscripciones.Values.Count(i => i.EstadoPago == EstadosPago.PagoEnVerificacion);
+                double ingresos = _inscripciones.Values.Where(i => i.EstadoPago == EstadosPago.Pagado).Sum(i => i.CategoriaPrecio);
 
                 double tasaAsistencia = totalInscritos > 0 
                     ? Math.Min(100.0, ((double)_asistencias.Count / totalInscritos) * 100.0) 

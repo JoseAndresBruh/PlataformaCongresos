@@ -209,14 +209,76 @@ Ruta base del servicio: `/api/v1`
 | PATCH | `/api/v1/eventos/{id}/estado` | Actualizacion del estado del congreso | Publico / Admin |
 | POST | `/api/v1/inscripciones` | Registro de inscripcion con o sin comprobante | Publico / Asistente |
 | GET | `/api/v1/inscripciones` | Listado y auditoria de inscripciones y SLA | Personal de Gestion |
+| GET | `/api/v1/inscripciones/{id}` | Detalle de inscripcion individual | Personal de Gestion |
+| PUT | `/api/v1/inscripciones/{id}/pago` | Validacion de estado de pago (Pagado/Rechazado) | Personal de Gestion |
+| POST | `/api/v1/inscripciones/{id}/comprobante` | Carga de comprobante (pasa a Pago en verificacion) | Asistente / Publico |
 | PATCH | `/api/v1/inscripciones/{id}/revision` | Aprobacion o rechazo de pago y emision de QR | Personal de Gestion |
+| GET | `/api/v1/notificaciones/config` | Consulta de configuracion del bot Telegram/WhatsApp | Personal de Gestion |
+| POST | `/api/v1/notificaciones/config` | Actualizacion de credenciales y parametros del bot | Personal de Gestion |
+| POST | `/api/v1/notificaciones/test` | Envio de mensaje de prueba por Telegram/WhatsApp | Personal de Gestion |
+| POST | `/api/v1/notificaciones/recordatorio-manual` | Disparo manual de recordatorio persistente | Personal de Gestion |
 | POST | `/api/v1/asistencia/check-in` | Validacion de credencial QR en puerta | Personal Asistencia |
 | GET | `/api/v1/dashboard/metricas` | Metricas y KPIs consolidados de la plataforma | Administrativo |
 | GET | `/api/v1/certificados` | Consulta de certificados emitidos por usuario | Publico / Asistente |
 | POST | `/api/v1/encuestas/responder` | Envio de respuestas a encuestas de ponencias | Asistente |
-| POST | `/api/v1/admin/eventos` | Creacion protegida de congresos | SUPER_ADMIN / ADMIN_EVENTO |
-| PATCH | `/api/v1/admin/eventos/{id}/estado` | Cambio de estado de congreso protegido | SUPER_ADMIN / ADMIN_EVENTO |
-| PATCH | `/api/v1/admin/inscripciones/{id}/revision` | Revision administrativa de comprobantes | SUPER_ADMIN / GESTION |
+
+---
+
+## Sistema de Validacion de Pagos por Estados y Recordatorios Persistentes
+
+La plataforma implementa un flujo estricto de auditoria financiera compuesto por tres estados cardinales:
+
+1. **No pagado**:
+   - Registro inicial con arancel pendiente sin comprobante adjunto.
+   - La credencial QR permanece bloqueada hasta que el pago sea acreditado.
+   - El participante puede cargar su archivo o enlace de comprobante desde la seccion "Mis Eventos".
+
+2. **Pago en verificacion**:
+   - Se activa de forma automatica en cuanto el participante carga su comprobante.
+   - Inicia la ventana reglamentaria de auditoria SLA de 24 horas.
+   - Dispara una notificacion inmediata al Bot de Telegram y genera el enlace directo de alerta para WhatsApp al encargado de finanzas.
+   - **Mecanismo de Recordatorios Persistentes**: El servicio en segundo plano `PaymentReminderBackgroundService` (`IHostedService` en .NET 9) monitorea periodicamente cada N minutos (15 min por defecto) los pagos que permanezcan en este estado y vuelve a notificar al encargado hasta que cada registro cambie formalmente de estado.
+
+3. **Pagado**:
+   - El personal de finanzas valida y aprueba el pago.
+   - Se libera y activa la credencial oficial digital con token QR unico para el control de acceso (check-in) en puerta.
+
+4. **Rechazado** (Flujo alternativo):
+   - El comprobante fue ilegible o el deposito no se acredito en cuenta corriente.
+   - El pago sale del estado de verificacion y se permite la recarga de un nuevo soporte.
+
+### Configuracion del Bot (Telegram y WhatsApp)
+
+Variables de entorno configurables en el backend:
+
+```env
+TELEGRAM_BOT_TOKEN="0000000000:AAExampleTokenFromBotFather"
+TELEGRAM_CHAT_ID="-1001234567890"
+WHATSAPP_PHONE="+593987654321"
+NOTIFICATION_INTERVAL_MINUTES=15
+```
+
+Tambien es posible ajustar los parametros en caliente desde la interfaz web en la opcion **Configurar Bot** dentro del Dashboard de Finanzas.
+
+---
+
+## Almacenamiento en Supabase Storage (Bucket 'comprobantes') y Compresion WebP
+
+Para optimizar el peso de los comprobantes y no saturar el almacenamiento ni el ancho de banda movil de los estudiantes y participantes, la plataforma incorpora:
+
+1. **Compresor y Convertidor WebP en el Cliente (Frontend React 19):**
+   - Procesa cualquier foto (JPG, PNG, HEIC) en el navegador del participante mediante la API Canvas nativa antes de realizar la subida.
+   - Aplica redimensionamiento proporcional hasta 1920x1080 px y codifica en `.webp` a calidad 82%.
+   - Reduce el tamano de los archivos en un **80% a 95%** (de 4 MB - 6 MB a aproximadamente 150 KB - 250 KB), manteniendo la nitidez completa de los textos y numeros de transaccion bancaria.
+   - Si el participante selecciona un documento PDF oficial de la banca, el sistema detecta el tipo MIME y lo preserva sin alteraciones.
+
+2. **Bucket Dedicado 'comprobantes' en Supabase Storage:**
+   - Ubicacion: `https://xoqzmiqdsgtxlhhpandb.supabase.co/storage/v1/object/public/comprobantes/`
+   - Politicas RLS activas en `storage.objects` para subida por participantes y lectura publica por CDN.
+
+3. **Ejecucion del Script SQL en Supabase:**
+   - El script completo se encuentra disponible en `database/supabase_setup_comprobantes.sql` y en la migracion `supabase/migrations/04_storage_comprobantes_webp.sql`.
+   - Para ejecutarlo, abre la consola web de Supabase en tu proyecto (`https://supabase.com/dashboard/project/xoqzmiqdsgtxlhhpandb/sql`), pega el contenido del archivo y presiona **Run**.
 
 ---
 

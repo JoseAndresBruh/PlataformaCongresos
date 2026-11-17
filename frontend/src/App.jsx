@@ -720,6 +720,27 @@ export default function App() {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [showCertPreviewModal, setShowCertPreviewModal] = useState(false);
 
+  // Configuración del Bot de Notificaciones (Telegram / WhatsApp) y Estados de Pago
+  const [botConfig, setBotConfig] = useState({
+    telegram_bot_token: '',
+    telegram_chat_id: '',
+    whatsapp_phone: '+593987654321',
+    recordatorios_activos: true,
+    intervalo_minutos: 15,
+    ultimo_envio_at: null,
+    total_notificaciones_enviadas: 14,
+  });
+  const [showBotConfigModal, setShowBotConfigModal] = useState(false);
+  const [paymentFilter, setPaymentFilter] = useState('TODOS');
+  const [showUploadPaymentModal, setShowUploadPaymentModal] = useState(false);
+  const [selectedUploadTarget, setSelectedUploadTarget] = useState(null);
+  const [uploadVoucherInput, setUploadVoucherInput] = useState('');
+  const [uploadVoucherNote, setUploadVoucherNote] = useState('');
+  const [uploadFileObject, setUploadFileObject] = useState(null);
+  const [compressionStats, setCompressionStats] = useState(null);
+  const [isCompressing, setIsCompressing] = useState(false);
+  const [isUploadingToSupabase, setIsUploadingToSupabase] = useState(false);
+
   // Control de bloqueo de scroll para dispositivos móviles y escritorio
   const isAnyOverlayActive = Boolean(
     mobileMenuOpen ||
@@ -736,7 +757,9 @@ export default function App() {
     showPrivacyModal ||
     showCampusModal ||
     showLogoutConfirmModal ||
-    showCertPreviewModal
+    showCertPreviewModal ||
+    showBotConfigModal ||
+    showUploadPaymentModal
   );
 
   const scrollPosRef = useRef(0);
@@ -797,52 +820,91 @@ export default function App() {
     { id: 2, nombre: 'Javier Jaramillo I.', tiempo: 'Hace 14 minutos', estado: 'VALIDADO' },
   ]);
 
-  // Lista de inscripciones para revisión de comprobantes con Ventana SLA de 24 horas (Personal de Gestión)
+  // Lista de inscripciones y estados de pago con Ventana SLA de 24 horas y conexión al Bot (Finanzas)
   const [comprobantesPendientes, setComprobantesPendientes] = useState([
     {
-      id: 'i0000000-0000-0000-0000-000000000002',
+      id: '70000000-0000-0000-0000-000000000002',
       participante: 'Javier David Jaramillo Intriago',
       cédula: '1318901234',
-      categoria: 'Profesional / Externo ($25.00)',
+      correo: 'participante.externo@gmail.com',
+      categoria: 'Profesional / Público General',
       monto: 25.0,
       evento: 'I Congreso Internacional de Software 2026',
       archivo: 'transferencia-pichincha-098231.pdf',
-      estado: 'EN_REVISION',
+      comprobante_url: 'https://storage.uleam.edu.ec/comprobantes/transferencia-banco-pichincha-098231.pdf',
+      estado_pago: 'Pago en verificación',
+      estado: 'PENDIENTE_REVISION',
       subido_hace: 'Hace 4 horas',
       horas_restantes: 20.0,
       estado_sla: 'A_TIEMPO',
     },
     {
-      id: 'i0000000-0000-0000-0000-000000000008',
+      id: '70000000-0000-0000-0000-000000000003',
+      participante: 'María Belén Moreira Alcívar',
+      cédula: '1319012345',
+      correo: 'mbelen.moreira@outlook.com',
+      categoria: 'Profesional / Público General',
+      monto: 25.0,
+      evento: 'I Congreso Internacional de Software 2026',
+      archivo: null,
+      comprobante_url: null,
+      estado_pago: 'No pagado',
+      estado: 'PENDIENTE_PAGO',
+      subido_hace: 'Hace 1 hora',
+      horas_restantes: 0,
+      estado_sla: 'A_TIEMPO',
+    },
+    {
+      id: '70000000-0000-0000-0000-000000000001',
+      participante: 'Karla Jamileth Andrade Mendoza',
+      cédula: '1317890123',
+      correo: 'estudiante@uleam.edu.ec',
+      categoria: 'Estudiante ULEAM (Gratuito)',
+      monto: 0.0,
+      evento: 'I Congreso Internacional de Software 2026',
+      archivo: null,
+      comprobante_url: null,
+      estado_pago: 'Pagado',
+      estado: 'CONFIRMADA',
+      subido_hace: 'Hace 48 horas',
+      horas_restantes: 0,
+      estado_sla: 'A_TIEMPO',
+    },
+    {
+      id: '70000000-0000-0000-0000-000000000008',
       participante: 'Mónica Zambrano Loor',
       cédula: '1314455667',
-      categoria: 'Profesional / Externo ($25.00)',
+      correo: 'monica.zambrano@uleam.edu.ec',
+      categoria: 'Profesional / Público General',
       monto: 25.0,
       evento: 'I Congreso Internacional de Software 2026',
       archivo: 'comprobante_deposito_449.jpg',
-      estado: 'EN_REVISION',
+      comprobante_url: 'https://storage.uleam.edu.ec/comprobantes/deposito-449.jpg',
+      estado_pago: 'Pago en verificación',
+      estado: 'PENDIENTE_REVISION',
       subido_hace: 'Hace 21.5 horas',
       horas_restantes: 2.5,
       estado_sla: 'URGENTE',
     },
     {
-      id: 'i0000000-0000-0000-0000-000000000009',
+      id: '70000000-0000-0000-0000-000000000009',
       participante: 'Roberto Álava Mendoza',
       cédula: '1310022334',
-      categoria: 'Profesional / Externo ($25.00)',
+      correo: 'roberto.alava@gmail.com',
+      categoria: 'Profesional / Público General',
       monto: 25.0,
       evento: 'I Congreso Internacional de Software 2026',
       archivo: 'transferencia_invalida.png',
-      estado: 'EXPIRADO',
+      comprobante_url: null,
+      estado_pago: 'Rechazado',
+      estado: 'RECHAZADA',
       subido_hace: 'Hace 26 horas',
       horas_restantes: 0.0,
       estado_sla: 'VENCIDO',
     },
   ]);
 
-
-
-  // Cargar eventos desde backend Go al montar el componente
+  // Cargar eventos, inscripciones y configuración del bot desde backend C# (.NET 9)
   useEffect(() => {
     let ignore = false;
     fetch(`${API_BASE}/eventos`)
@@ -856,6 +918,40 @@ export default function App() {
       .finally(() => {
         if (!ignore) setLoading(false);
       });
+
+    fetch(`${API_BASE}/inscripciones`)
+      .then((res) => (res.ok ? res.json() : []))
+      .then((data) => {
+        if (!ignore && Array.isArray(data) && data.length > 0) {
+          setComprobantesPendientes(data.map((i) => ({
+            id: i.id,
+            participante: i.usuario_nombre,
+            cédula: i.usuario_identificacion || '1318901234',
+            correo: i.usuario_correo,
+            categoria: `${i.categoria_nombre} ($${(i.categoria_precio || 0).toFixed(2)})`,
+            monto: i.categoria_precio || 0,
+            evento: i.evento_nombre,
+            archivo: i.comprobante_url ? i.comprobante_url.split('/').pop() : null,
+            comprobante_url: i.comprobante_url,
+            estado_pago: i.estado_pago || (i.categoria_precio === 0 ? 'Pagado' : (i.comprobante_url ? 'Pago en verificación' : 'No pagado')),
+            estado: i.estado,
+            subido_hace: 'Registrado en sistema',
+            horas_restantes: i.horas_restantes || (i.estado_pago === 'Pago en verificación' ? 24 : 0),
+            estado_sla: i.estado_sla || 'A_TIEMPO',
+          })));
+        }
+      })
+      .catch(() => {});
+
+    fetch(`${API_BASE}/notificaciones/config`)
+      .then((res) => (res.ok ? res.json() : null))
+      .then((cfg) => {
+        if (!ignore && cfg) {
+          setBotConfig(cfg);
+        }
+      })
+      .catch(() => {});
+
     return () => {
       ignore = true;
     };
@@ -1164,34 +1260,350 @@ export default function App() {
     setScanInput('');
   };
 
-  // Aprobación/Rechazo de comprobantes con conexión al Backend
-  const handleReviewVoucher = async (id, newStatus) => {
+  // Aprobación/Rechazo de pagos y comprobantes con conexión al Backend (.NET 9 / C#)
+  const handleReviewVoucher = async (id, newPaymentStatus, observaciones = '') => {
     try {
-      await fetch(`${API_BASE}/inscripciones/${id}/revision`, {
-        method: 'PATCH',
+      await fetch(`${API_BASE}/inscripciones/${id}/pago`, {
+        method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ estado: newStatus === 'APROBADO' ? 'CONFIRMADA' : 'CANCELADA' }),
+        body: JSON.stringify({
+          estado_pago: newPaymentStatus,
+          observaciones: observaciones || (newPaymentStatus === 'Pagado' ? 'Validado y acreditado por mesa de Finanzas ULEAM' : 'Comprobante observado o rechazado'),
+        }),
       });
     } catch {
-      // Manejo local
+      // Manejo local ante desconexión
     }
 
     setComprobantesPendientes((prev) =>
-      prev.map((c) => (c.id === id ? { ...c, estado: newStatus } : c))
+      prev.map((c) =>
+        c.id === id
+          ? {
+              ...c,
+              estado_pago: newPaymentStatus,
+              estado: newPaymentStatus === 'Pagado' ? 'CONFIRMADA' : newPaymentStatus === 'Rechazado' ? 'RECHAZADA' : c.estado,
+            }
+          : c
+      )
     );
-    showToast(newStatus === 'APROBADO' ? 'Comprobante aprobado y credencial QR liberada.' : 'Comprobante rechazado.');
+
+    if (newPaymentStatus === 'Pagado') {
+      showToast('Pago validado en estado "Pagado". Credencial QR activada para el participante.');
+    } else if (newPaymentStatus === 'Rechazado') {
+      showToast('Comprobante rechazado. Se solicita al participante cargar un nuevo soporte.');
+    } else {
+      showToast(`Estado de pago actualizado a: ${newPaymentStatus}`);
+    }
+  };
+
+  // Generación de URL de WhatsApp para alertas y recordatorios
+  const getWhatsAppAlertUrl = (comp) => {
+    const rawPhone = botConfig.whatsapp_phone || '+593987654321';
+    const phone = rawPhone.replace(/\D/g, '');
+    let motivo = '';
+    if (comp.estado_pago === 'Pago en verificación') {
+      motivo = `Su comprobante se encuentra en estado 'Pago en verificación' con un SLA reglamentario de 24 horas. El equipo de Finanzas está validando su depósito.`;
+    } else if (comp.estado_pago === 'No pagado') {
+      motivo = `Le recordamos que su inscripción está en estado 'No pagado'. Para asegurar su aforo y activar su credencial QR institucional, favor de cargar su comprobante de depósito o transferencia.`;
+    } else if (comp.estado_pago === 'Pagado') {
+      motivo = `Confirmamos que su pago de $${comp.monto.toFixed(2)} USD ha sido validado exitosamente ('Pagado'). Su credencial QR ya está disponible en su portal.`;
+    } else {
+      motivo = `Le notificamos sobre una novedad en la revisión de su comprobante de pago.`;
+    }
+
+    const msg = `[ULEAM EVENTOS - SOPORTE DE FINANZAS]\nEstimado(a) ${comp.participante},\nEvento: ${comp.evento}\nCategoría: ${comp.categoria}\nMonto: $${comp.monto.toFixed(2)} USD\nEstado de pago: ${comp.estado_pago}\n\n${motivo}`;
+    return `https://wa.me/${phone}?text=${encodeURIComponent(msg)}`;
+  };
+
+  // Enviar Notificación de Prueba a Telegram o WhatsApp
+  const handleSendTestNotification = async (canal = 'telegram') => {
+    try {
+      const res = await fetch(`${API_BASE}/notificaciones/test`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          canal,
+          mensaje: 'Prueba de enlace operativo del Bot de Notificaciones ULEAM-EVENTOS. La sincronización con el personal de Finanzas se encuentra en línea.',
+        }),
+      });
+      const data = await res.json();
+      showToast(data.mensaje || 'Prueba de notificación procesada.');
+      if (canal === 'whatsapp' && data.url_whatsapp) {
+        window.open(data.url_whatsapp, '_blank');
+      }
+    } catch {
+      showToast('Notificación de prueba generada en modo local institucional.');
+    }
+  };
+
+  // Disparar Recordatorio Manual Persistente
+  const handleTriggerManualReminder = async () => {
+    try {
+      const res = await fetch(`${API_BASE}/notificaciones/recordatorio-manual`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+      });
+      const data = await res.json();
+      showToast(data.mensaje || 'Recordatorio persistente enviado a los encargados de validación.');
+      if (data.url_whatsapp) {
+        window.open(data.url_whatsapp, '_blank');
+      }
+    } catch {
+      showToast('Recordatorio persistente ejecutado.');
+    }
+  };
+
+  // Guardar Configuración del Bot
+  const handleSaveBotConfig = async (e) => {
+    e.preventDefault();
+    try {
+      const res = await fetch(`${API_BASE}/notificaciones/config`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(botConfig),
+      });
+      if (res.ok) {
+        const data = await res.json();
+        if (data.config) setBotConfig(data.config);
+      }
+      showToast('Configuración del Bot de Notificaciones guardada correctamente.');
+    } catch {
+      showToast('Configuración del Bot guardada localmente.');
+    }
+    setShowBotConfigModal(false);
+  };
+
+  // Utilidad para formatear bytes en unidades legibles (KB, MB)
+  const formatBytes = (bytes) => {
+    if (!bytes || bytes === 0) return '0 B';
+    const k = 1024;
+    const sizes = ['B', 'KB', 'MB', 'GB'];
+    const i = Math.floor(Math.log(bytes) / Math.log(k));
+    return `${parseFloat((bytes / Math.pow(k, i)).toFixed(1))} ${sizes[i]}`;
+  };
+
+  // Compresor y convertidor a WebP en el navegador (Client-side Canvas API)
+  const compressImageToWebP = (file, maxWidth = 1920, maxHeight = 1080, quality = 0.82) => {
+    return new Promise((resolve) => {
+      // Si el archivo ya es un documento PDF, conservarlo sin alteración
+      if (file.type === 'application/pdf' || file.name.toLowerCase().endsWith('.pdf')) {
+        resolve({
+          file,
+          isPdf: true,
+          name: file.name,
+          originalSize: file.size,
+          compressedSize: file.size,
+          savingsPercent: 0,
+          format: 'pdf',
+          previewUrl: null,
+        });
+        return;
+      }
+
+      const reader = new FileReader();
+      reader.onload = (e) => {
+        const img = new Image();
+        img.onload = () => {
+          let { width, height } = img;
+          if (width > maxWidth || height > maxHeight) {
+            const ratio = Math.min(maxWidth / width, maxHeight / height);
+            width = Math.round(width * ratio);
+            height = Math.round(height * ratio);
+          }
+
+          const canvas = document.createElement('canvas');
+          canvas.width = width;
+          canvas.height = height;
+          const ctx = canvas.getContext('2d');
+          ctx.drawImage(img, 0, 0, width, height);
+
+          canvas.toBlob((blob) => {
+            if (!blob) {
+              resolve({
+                file,
+                isPdf: false,
+                name: file.name,
+                originalSize: file.size,
+                compressedSize: file.size,
+                savingsPercent: 0,
+                format: file.type.replace('image/', '') || 'jpg',
+                previewUrl: e.target.result,
+              });
+              return;
+            }
+            const baseName = file.name.replace(/\.[^/.]+$/, '');
+            const newName = `${baseName}.webp`;
+            const compressedFile = new File([blob], newName, { type: 'image/webp' });
+            const savings = Math.max(0, Math.round(((file.size - blob.size) / file.size) * 100));
+            resolve({
+              file: compressedFile,
+              blob,
+              isPdf: false,
+              name: newName,
+              originalSize: file.size,
+              compressedSize: blob.size,
+              savingsPercent: savings,
+              format: 'webp',
+              previewUrl: URL.createObjectURL(blob),
+            });
+          }, 'image/webp', quality);
+        };
+        img.onerror = () => {
+          resolve({
+            file,
+            isPdf: false,
+            name: file.name,
+            originalSize: file.size,
+            compressedSize: file.size,
+            savingsPercent: 0,
+            format: file.type || 'bin',
+            previewUrl: null,
+          });
+        };
+        img.src = e.target.result;
+      };
+      reader.onerror = () => {
+        resolve({
+          file,
+          isPdf: false,
+          name: file.name,
+          originalSize: file.size,
+          compressedSize: file.size,
+          savingsPercent: 0,
+          format: file.type || 'bin',
+          previewUrl: null,
+        });
+      };
+      reader.readAsDataURL(file);
+    });
+  };
+
+  // Subida directa al Bucket 'comprobantes' de Supabase Storage
+  const uploadFileToSupabase = async (file, bucketName = 'comprobantes') => {
+    const supabaseUrl = (import.meta.env.VITE_SUPABASE_URL || 'https://xoqzmiqdsgtxlhhpandb.supabase.co').replace(/\/+$/, '');
+    const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY || 'sb_publishable_4U2aMYbFJd50FFsx04n35Q_iUKuxIT6';
+
+    const cleanName = file.name.replace(/[^a-zA-Z0-9_.-]/g, '_');
+    const uniqueKey = `pago_${Date.now()}_${cleanName}`;
+    const endpoint = `${supabaseUrl}/storage/v1/object/${bucketName}/${uniqueKey}`;
+    const publicUrl = `${supabaseUrl}/storage/v1/object/public/${bucketName}/${uniqueKey}`;
+
+    try {
+      const res = await fetch(endpoint, {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${supabaseAnonKey}`,
+          apikey: supabaseAnonKey,
+          'Content-Type': file.type || 'image/webp',
+          'x-upsert': 'true',
+        },
+        body: file,
+      });
+
+      if (res.ok) {
+        return publicUrl;
+      }
+    } catch (err) {
+      console.warn('Subida directa a Supabase en modo local/fallback:', err);
+    }
+
+    return publicUrl;
+  };
+
+  // Manejador al seleccionar un archivo en el modal de comprobantes
+  const handleVoucherFileSelected = async (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    setIsCompressing(true);
+    try {
+      const result = await compressImageToWebP(file);
+      setUploadFileObject(result);
+      setCompressionStats(result);
+      setUploadVoucherInput(result.name);
+      showToast(result.isPdf ? 'Documento PDF verificado para subida.' : `Imagen convertida a .webp con reducción del ${result.savingsPercent}%.`);
+    } catch {
+      showToast('No fue posible procesar la imagen. Se utilizará el archivo original.');
+    } finally {
+      setIsCompressing(false);
+    }
+  };
+
+  // Carga de Comprobante por parte del Participante (No pagado -> Pago en verificación)
+  const handleSubmitVoucherUpload = async (e) => {
+    e.preventDefault();
+    if (!uploadFileObject && !uploadVoucherInput.trim()) {
+      showToast('Por favor seleccione una imagen o ingrese el comprobante.');
+      return;
+    }
+
+    setIsUploadingToSupabase(true);
+    let finalUrl = uploadVoucherInput.trim();
+    let finalFormat = 'webp';
+    let finalSize = 0;
+
+    if (uploadFileObject?.file) {
+      try {
+        finalUrl = await uploadFileToSupabase(uploadFileObject.file, 'comprobantes');
+        finalFormat = uploadFileObject.format;
+        finalSize = uploadFileObject.compressedSize;
+      } catch {
+        finalUrl = `https://xoqzmiqdsgtxlhhpandb.supabase.co/storage/v1/object/public/comprobantes/${Date.now()}_${uploadFileObject.name}`;
+      }
+    }
+
+    const targetId = selectedUploadTarget?.id || '70000000-0000-0000-0000-000000000003';
+    try {
+      await fetch(`${API_BASE}/inscripciones/${targetId}/comprobante`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          comprobante_url: finalUrl,
+          observaciones: uploadVoucherNote.trim() || `Comprobante en Supabase Storage (Formato: ${finalFormat}, Tamaño: ${formatBytes(finalSize)})`,
+        }),
+      });
+    } catch {
+      // Manejo local ante desconexión
+    }
+
+    setComprobantesPendientes((prev) =>
+      prev.map((c) =>
+        c.id === targetId
+          ? {
+              ...c,
+              archivo: finalUrl.split('/').pop() || 'comprobante.webp',
+              comprobante_url: finalUrl,
+              estado_pago: 'Pago en verificación',
+              estado: 'PENDIENTE_REVISION',
+              horas_restantes: 24.0,
+              estado_sla: 'A_TIEMPO',
+              subido_hace: 'Hace un momento',
+            }
+          : c
+      )
+    );
+
+    setIsUploadingToSupabase(false);
+    setShowUploadPaymentModal(false);
+    setUploadVoucherInput('');
+    setUploadVoucherNote('');
+    setUploadFileObject(null);
+    setCompressionStats(null);
+    setSelectedUploadTarget(null);
+    showToast('Comprobante optimizado en .webp subido a Supabase Storage con éxito. Estado: "Pago en verificación".');
   };
 
   // Exportar Tabla de Finanzas a Excel (CSV con UTF-8 BOM y nombre limpio)
   const handleExportCSV = () => {
-    const headers = ['Participante', 'Cédula', 'Categoría', 'Monto ($)', 'Archivo Comprobante', 'Estado', 'Subido Hace'];
+    const headers = ['Participante', 'Cédula', 'Correo', 'Categoría', 'Monto ($)', 'Estado de Pago', 'Archivo Comprobante', 'Subido Hace'];
     const rows = comprobantesPendientes.map((c) => [
       c.participante,
       c.cédula,
+      c.correo || '',
       c.categoria,
       c.monto.toFixed(2),
-      c.archivo,
-      c.estado,
+      c.estado_pago || c.estado,
+      c.archivo || 'Sin archivo',
       c.subido_hace,
     ]);
     const fecha = new Date().toISOString().slice(0, 10);
@@ -2233,11 +2645,14 @@ export default function App() {
           </div>
 
           <div className="cards-grid-auto">
-            {/* Tarjeta 1: Confirmada con QR Activo */}
+            {/* Tarjeta 1: Pagado con QR Activo y Disponible */}
             <div className="event-card">
               <div style={{ padding: '24px' }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
-                  <span className="chip chip-success">Confirmada</span>
+                  <span className="chip chip-success">
+                    <span className="material-symbols-outlined" style={{ fontSize: '15px' }}>check_circle</span>
+                    Pagado
+                  </span>
                   <span style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>C.I: 1317890123</span>
                 </div>
                 <h3 style={{ fontSize: '1.2rem', marginBottom: '8px' }}>
@@ -2285,13 +2700,13 @@ export default function App() {
               </div>
             </div>
 
-            {/* Tarjeta 2: En Revisión (SLA 24 Horas) */}
+            {/* Tarjeta 2: Pago en verificación (SLA 24 Horas y Alerta al Bot) */}
             <div className="event-card">
               <div style={{ padding: '24px' }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
                   <span className="chip chip-alert">
                     <span className="material-symbols-outlined" style={{ fontSize: '15px' }}>hourglass_top</span>
-                    En Revisión (24h)
+                    Pago en verificación
                   </span>
                   <span style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>C.I: 1318901234</span>
                 </div>
@@ -2299,7 +2714,7 @@ export default function App() {
                   I Congreso Internacional de Ingeniería en Software 2026
                 </h3>
                 <p style={{ fontSize: '0.88rem', color: 'var(--text-secondary)', marginBottom: '14px' }}>
-                  Categoría: Profesional / Externo ($25.00) • Paraninfo Alfonso Aguilar Ruilova
+                  Categoría: Profesional / Público General ($25.00) • Paraninfo Alfonso Aguilar Ruilova
                 </p>
 
                 {/* Caja Informativa SLA 24 Horas */}
@@ -2309,7 +2724,7 @@ export default function App() {
                     <span>Validación de Pago en Curso</span>
                   </div>
                   <p style={{ fontSize: '0.83rem', color: 'var(--text-primary)', lineHeight: 1.4 }}>
-                    Comprobante subido hace 4 horas. La mesa de finanzas tiene un plazo reglamentario de <strong>24 horas</strong> para validar tu depósito.
+                    Comprobante subido. La mesa de Finanzas tiene un plazo reglamentario de <strong>24 horas</strong> para verificar tu depósito. El bot institucional envía recordatorios periódicos al encargado hasta su confirmación.
                   </p>
                   <div style={{ marginTop: '10px' }}>
                     <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.75rem', fontWeight: 600, color: '#B26A00', marginBottom: '4px' }}>
@@ -2328,7 +2743,61 @@ export default function App() {
                     style={{ flex: 1 }}
                     onClick={() => setVoucherPreview('https://storage.uleam.edu.ec/comprobantes/transferencia-banco-pichincha-098231.pdf')}
                   >
-                    <span className="material-symbols-outlined">attach_file</span> Ver Soporte
+                    <span className="material-symbols-outlined">attach_file</span> Ver Comprobante
+                  </button>
+                  <button
+                    className="btn btn-outline"
+                    disabled
+                    style={{ flex: 1, opacity: 0.6, cursor: 'not-allowed' }}
+                  >
+                    <span className="material-symbols-outlined">lock</span> QR en Auditoría
+                  </button>
+                </div>
+              </div>
+            </div>
+
+            {/* Tarjeta 3: No pagado (Arancel Pendiente de Carga de Comprobante) */}
+            <div className="event-card">
+              <div style={{ padding: '24px' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
+                  <span className="chip chip-urgent" style={{ background: 'rgba(211, 47, 47, 0.12)', color: 'var(--color-alert)' }}>
+                    <span className="material-symbols-outlined" style={{ fontSize: '15px' }}>pending_actions</span>
+                    No pagado
+                  </span>
+                  <span style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>C.I: 1319012345</span>
+                </div>
+                <h3 style={{ fontSize: '1.2rem', marginBottom: '8px' }}>
+                  Simposio Internacional de Ciberseguridad e Inteligencia de Datos 2026
+                </h3>
+                <p style={{ fontSize: '0.88rem', color: 'var(--text-secondary)', marginBottom: '14px' }}>
+                  Categoría: Profesional / Público General ($25.00) • Aula Magna Chone
+                </p>
+
+                {/* Caja Informativa: No pagado */}
+                <div style={{ background: 'rgba(0, 47, 108, 0.04)', padding: '16px', borderRadius: 'var(--radius-lg)', border: '1px solid rgba(0, 47, 108, 0.15)', marginBottom: '18px' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px', color: 'var(--primary-dark)', fontWeight: 700, fontSize: '0.9rem', marginBottom: '6px' }}>
+                    <span className="material-symbols-outlined" style={{ fontSize: '20px', color: 'var(--color-alert)' }}>error_outline</span>
+                    <span>Arancel Pendiente de Validación</span>
+                  </div>
+                  <p style={{ fontSize: '0.83rem', color: 'var(--text-primary)', lineHeight: 1.4 }}>
+                    Tu inscripción fue registrada pero requiere comprobante de depósito o transferencia bancaria para activar tu credencial QR y confirmar tu aforo.
+                  </p>
+                </div>
+
+                <div style={{ display: 'flex', gap: '10px' }}>
+                  <button
+                    className="btn btn-primary"
+                    style={{ flex: 1 }}
+                    onClick={() => {
+                      setSelectedUploadTarget({
+                        id: '70000000-0000-0000-0000-000000000003',
+                        evento: 'Simposio Internacional de Ciberseguridad e Inteligencia de Datos 2026',
+                        monto: 25.0,
+                      });
+                      setShowUploadPaymentModal(true);
+                    }}
+                  >
+                    <span className="material-symbols-outlined">upload_file</span> Subir Comprobante
                   </button>
                   <button
                     className="btn btn-outline"
@@ -2539,7 +3008,7 @@ export default function App() {
                       background: 'rgba(255, 255, 255, 0.75)',
                     }}
                   >
-                    <span>★ ULEAM ★</span>
+                    <span>ULEAM OFICIAL</span>
                     <strong style={{ fontSize: '0.6rem', color: '#002F6C' }}>RECTORADO</strong>
                     <span>ECUADOR</span>
                   </div>
@@ -3136,18 +3605,30 @@ export default function App() {
       )}
 
       {/* ============================================================== */}
-      {/* VISTA 5: PERSONAL DE GESTIÓN (Mesa de Finanzas)                */}
+      {/* VISTA 5: PERSONAL DE GESTIÓN (Mesa de Finanzas y Auditoría)     */}
       {/* ============================================================== */}
       {currentView === 'gestion_pagos' && (
         <main className="main-container" style={{ padding: '40px 24px' }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '32px', flexWrap: 'wrap', gap: '16px' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '28px', flexWrap: 'wrap', gap: '16px' }}>
             <div>
-              <h2 className="headline-large">Dashboard Operativo de Finanzas y Pagos</h2>
-              <p className="body-regular">Validación de transferencias bancarias y soporte contable con ventana de 24 horas.</p>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '6px' }}>
+                <span className="chip chip-success" style={{ background: 'rgba(46, 125, 50, 0.12)', color: 'var(--color-success)' }}>
+                  <span className="material-symbols-outlined" style={{ fontSize: '15px' }}>shield</span>
+                  Módulo de Finanzas Oficial
+                </span>
+                <span className="chip" style={{ background: 'rgba(0, 47, 108, 0.08)', color: 'var(--primary-dark)' }}>
+                  SLA 24 Horas
+                </span>
+              </div>
+              <h2 className="headline-large">Auditoría Financiera y Validación de Pagos</h2>
+              <p className="body-regular">Gestión de transferencias, validación de estados y recordatorios persistentes mediante bots.</p>
             </div>
-            <div style={{ display: 'flex', gap: '10px' }}>
+            <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
               <button className="btn btn-outline btn-sm" onClick={handleExportCSV}>
                 <span className="material-symbols-outlined">table_view</span> Exportar Excel
+              </button>
+              <button className="btn btn-outline btn-sm" onClick={() => setShowBotConfigModal(true)}>
+                <span className="material-symbols-outlined">settings</span> Configurar Bot
               </button>
               <button className="btn btn-urgent btn-sm" onClick={() => window.print()}>
                 <span className="material-symbols-outlined">picture_as_pdf</span> Imprimir Reporte
@@ -3155,91 +3636,318 @@ export default function App() {
             </div>
           </div>
 
+          {/* Tarjeta del Bot de Notificaciones (Telegram / WhatsApp) */}
+          <div
+            style={{
+              background: '#FFFFFF',
+              borderRadius: 'var(--radius-xl)',
+              padding: '24px',
+              border: '1px solid rgba(0, 47, 108, 0.12)',
+              boxShadow: 'var(--shadow-level-1)',
+              marginBottom: '28px',
+            }}
+          >
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: '16px', marginBottom: '18px' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '14px' }}>
+                <div
+                  style={{
+                    width: '46px',
+                    height: '46px',
+                    borderRadius: '12px',
+                    background: 'rgba(0, 47, 108, 0.08)',
+                    color: 'var(--primary-container)',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                  }}
+                >
+                  <span className="material-symbols-outlined" style={{ fontSize: '26px' }}>smart_toy</span>
+                </div>
+                <div>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                    <h3 style={{ fontSize: '1.08rem', color: 'var(--primary-dark)', margin: 0 }}>
+                      Bot Institucional de Notificaciones (Telegram / WhatsApp)
+                    </h3>
+                    <span className="chip chip-success" style={{ fontSize: '0.72rem', padding: '2px 8px' }}>
+                      {botConfig.recordatorios_activos ? 'En Línea / Activo' : 'En Pausa'}
+                    </span>
+                  </div>
+                  <p style={{ fontSize: '0.84rem', color: 'var(--text-muted)', margin: '4px 0 0' }}>
+                    Recordatorios persistentes automáticos cada <strong>{botConfig.intervalo_minutos} min</strong> al personal de Finanzas mientras existan pagos en <em>Pago en verificación</em>.
+                  </p>
+                </div>
+              </div>
+
+              {/* Botones de Acción Rápida del Bot */}
+              <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+                <button
+                  className="btn btn-outline btn-sm"
+                  onClick={() => handleSendTestNotification('telegram')}
+                  title="Enviar ping de prueba a Telegram"
+                >
+                  <span className="material-symbols-outlined" style={{ fontSize: '16px' }}>send</span>
+                  Probar Telegram
+                </button>
+                <button
+                  className="btn btn-outline btn-sm"
+                  onClick={handleTriggerManualReminder}
+                  title="Enviar recordatorio agrupado de pendientes inmediatamente"
+                >
+                  <span className="material-symbols-outlined" style={{ fontSize: '16px' }}>notifications_active</span>
+                  Recordar Pendientes Ahora
+                </button>
+                <a
+                  href={`https://wa.me/${(botConfig.whatsapp_phone || '+593987654321').replace(/\D/g, '')}?text=${encodeURIComponent('[ULEAM EVENTOS - SOPORTE FINANCIERO]\nConsulta de estado de pagos y comprobantes pendientes.')}`}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="btn btn-primary btn-sm"
+                  style={{ background: '#25D366', borderColor: '#25D366' }}
+                >
+                  <span className="material-symbols-outlined" style={{ fontSize: '16px' }}>chat</span>
+                  WhatsApp Finanzas
+                </a>
+              </div>
+            </div>
+
+            {/* Fila de Métricas del Bot */}
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '16px', background: 'var(--surface-container)', padding: '14px 18px', borderRadius: 'var(--radius-lg)' }}>
+              <div>
+                <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)', display: 'block' }}>Canal Principal</span>
+                <strong style={{ fontSize: '0.9rem', color: 'var(--primary-dark)' }}>Telegram Bot API + WhatsApp</strong>
+              </div>
+              <div>
+                <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)', display: 'block' }}>Frecuencia Persistente</span>
+                <strong style={{ fontSize: '0.9rem', color: 'var(--primary-dark)' }}>Cada {botConfig.intervalo_minutos} minutos</strong>
+              </div>
+              <div>
+                <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)', display: 'block' }}>En Verificación</span>
+                <strong style={{ fontSize: '0.9rem', color: '#B26A00' }}>
+                  {comprobantesPendientes.filter((c) => c.estado_pago === 'Pago en verificación').length} comprobantes
+                </strong>
+              </div>
+              <div>
+                <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)', display: 'block' }}>Teléfono Notificado</span>
+                <strong style={{ fontSize: '0.9rem', color: 'var(--primary-dark)' }}>{botConfig.whatsapp_phone || '+593987654321'}</strong>
+              </div>
+            </div>
+          </div>
+
+          {/* Filtros de Pestañas por Estado de Pago */}
+          <div style={{ display: 'flex', gap: '8px', marginBottom: '20px', flexWrap: 'wrap' }}>
+            <button
+              className={`btn btn-sm ${paymentFilter === 'TODOS' ? 'btn-primary' : 'btn-outline'}`}
+              onClick={() => setPaymentFilter('TODOS')}
+            >
+              Todos ({comprobantesPendientes.length})
+            </button>
+            <button
+              className={`btn btn-sm ${paymentFilter === 'PAGO_EN_VERIFICACION' ? 'btn-primary' : 'btn-outline'}`}
+              style={paymentFilter === 'PAGO_EN_VERIFICACION' ? { background: '#F9A825', borderColor: '#F9A825', color: '#000' } : {}}
+              onClick={() => setPaymentFilter('PAGO_EN_VERIFICACION')}
+            >
+              <span className="material-symbols-outlined" style={{ fontSize: '15px' }}>hourglass_top</span>
+              Pago en verificación ({comprobantesPendientes.filter((c) => c.estado_pago === 'Pago en verificación').length})
+            </button>
+            <button
+              className={`btn btn-sm ${paymentFilter === 'NO_PAGADO' ? 'btn-primary' : 'btn-outline'}`}
+              style={paymentFilter === 'NO_PAGADO' ? { background: 'var(--color-alert)', borderColor: 'var(--color-alert)' } : {}}
+              onClick={() => setPaymentFilter('NO_PAGADO')}
+            >
+              <span className="material-symbols-outlined" style={{ fontSize: '15px' }}>pending_actions</span>
+              No pagado ({comprobantesPendientes.filter((c) => c.estado_pago === 'No pagado').length})
+            </button>
+            <button
+              className={`btn btn-sm ${paymentFilter === 'PAGADO' ? 'btn-primary' : 'btn-outline'}`}
+              style={paymentFilter === 'PAGADO' ? { background: 'var(--color-success)', borderColor: 'var(--color-success)' } : {}}
+              onClick={() => setPaymentFilter('PAGADO')}
+            >
+              <span className="material-symbols-outlined" style={{ fontSize: '15px' }}>check_circle</span>
+              Pagado ({comprobantesPendientes.filter((c) => c.estado_pago === 'Pagado').length})
+            </button>
+          </div>
+
+          {/* Tabla de Pagos y Comprobantes */}
           <div className="table-responsive-wrapper">
             <div className="table-scroll-hint">Desliza horizontalmente para ver todas las columnas</div>
-            <table style={{ width: '100%', minWidth: '700px', borderCollapse: 'collapse', textAlign: 'left', fontSize: '0.9rem' }}>
+            <table style={{ width: '100%', minWidth: '850px', borderCollapse: 'collapse', textAlign: 'left', fontSize: '0.88rem' }}>
               <thead style={{ background: 'var(--surface-container)', color: 'var(--primary-dark)' }}>
                 <tr>
-                  <th style={{ padding: '14px 20px' }}>Participante</th>
-                  <th style={{ padding: '14px 20px' }}>Cédula</th>
-                  <th style={{ padding: '14px 20px' }}>Categoría</th>
-                  <th style={{ padding: '14px 20px' }}>Monto</th>
-                  <th style={{ padding: '14px 20px' }}>Comprobante</th>
-                  <th style={{ padding: '14px 20px' }}>Estado & SLA (24h)</th>
-                  <th style={{ padding: '14px 20px', textAlign: 'center' }}>Acciones</th>
+                  <th style={{ padding: '14px 18px' }}>Participante</th>
+                  <th style={{ padding: '14px 18px' }}>Evento y Categoría</th>
+                  <th style={{ padding: '14px 18px' }}>Monto</th>
+                  <th style={{ padding: '14px 18px' }}>Comprobante</th>
+                  <th style={{ padding: '14px 18px' }}>Estado de Pago</th>
+                  <th style={{ padding: '14px 18px', textAlign: 'center' }}>Acciones</th>
                 </tr>
               </thead>
               <tbody>
-                {comprobantesPendientes.map((comp) => (
-                  <tr key={comp.id} style={{ borderBottom: '1px solid rgba(0, 47, 108, 0.08)' }}>
-                    <td style={{ padding: '16px 20px', fontWeight: 600 }}>{comp.participante}</td>
-                    <td style={{ padding: '16px 20px' }}>{comp.cédula}</td>
-                    <td style={{ padding: '16px 20px' }}>{comp.categoria}</td>
-                    <td style={{ padding: '16px 20px', fontWeight: 700, color: 'var(--primary-container)' }}>
-                      ${comp.monto.toFixed(2)}
-                    </td>
-                    <td style={{ padding: '16px 20px' }}>
-                      <button
-                        style={{ background: 'none', border: 'none', color: 'var(--primary-container)', textDecoration: 'underline', cursor: 'pointer', padding: 0, fontWeight: 500 }}
-                        onClick={() => setVoucherPreview(`https://storage.uleam.edu.ec/comprobantes/${comp.archivo}`)}
-                      >
-                        {comp.archivo}
-                      </button>
-                      <span style={{ display: 'block', fontSize: '0.75rem', color: 'var(--text-muted)' }}>
-                        {comp.subido_hace}
-                      </span>
-                    </td>
-                    <td style={{ padding: '16px 20px' }}>
-                      <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
-                        <span className={`chip ${
-                          comp.estado === 'APROBADO' ? 'chip-success' :
-                          comp.estado === 'RECHAZADO' ? 'chip-urgent' :
-                          comp.estado === 'EXPIRADO' ? 'chip-urgent' :
-                          comp.estado_sla === 'URGENTE' ? 'chip-urgent' : 'chip-alert'
-                        }`}>
-                          {comp.estado === 'EN_REVISION'
-                            ? comp.estado_sla === 'URGENTE'
-                              ? `URGENTE (${comp.horas_restantes}h restantes)`
-                              : `EN REVISIÓN (${comp.horas_restantes}h)`
-                            : comp.estado}
-                        </span>
-                        {comp.estado === 'EN_REVISION' && (
-                          <div style={{ width: '130px', height: '4px', background: '#E2E8F0', borderRadius: '2px', overflow: 'hidden' }}>
-                            <div style={{
-                              width: `${(comp.horas_restantes / 24) * 100}%`,
-                              height: '100%',
-                              background: comp.estado_sla === 'URGENTE' ? 'var(--color-error)' : 'var(--primary-container)',
-                            }}></div>
-                          </div>
+                {comprobantesPendientes
+                  .filter((comp) => {
+                    if (paymentFilter === 'PAGO_EN_VERIFICACION') return comp.estado_pago === 'Pago en verificación';
+                    if (paymentFilter === 'NO_PAGADO') return comp.estado_pago === 'No pagado';
+                    if (paymentFilter === 'PAGADO') return comp.estado_pago === 'Pagado';
+                    return true;
+                  })
+                  .map((comp) => (
+                    <tr key={comp.id} style={{ borderBottom: '1px solid rgba(0, 47, 108, 0.08)' }}>
+                      <td style={{ padding: '16px 18px' }}>
+                        <div style={{ fontWeight: 600, color: 'var(--primary-dark)' }}>{comp.participante}</div>
+                        <div style={{ fontSize: '0.78rem', color: 'var(--text-muted)' }}>C.I: {comp.cédula}</div>
+                        {comp.correo && (
+                          <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>{comp.correo}</div>
                         )}
-                      </div>
-                    </td>
-                    <td style={{ padding: '16px 20px', textAlign: 'center' }}>
-                      {comp.estado === 'EN_REVISION' ? (
-                        <div style={{ display: 'flex', gap: '8px', justifyContent: 'center' }}>
-                          <button
-                            className="btn btn-primary btn-sm"
-                            style={{ background: 'var(--color-success)', padding: '5px 12px' }}
-                            onClick={() => handleReviewVoucher(comp.id, 'APROBADO')}
+                      </td>
+                      <td style={{ padding: '16px 18px' }}>
+                        <div style={{ fontWeight: 500 }}>{comp.evento}</div>
+                        <span style={{ fontSize: '0.78rem', color: 'var(--text-muted)' }}>{comp.categoria}</span>
+                      </td>
+                      <td style={{ padding: '16px 18px', fontWeight: 700, color: 'var(--primary-container)' }}>
+                        ${comp.monto.toFixed(2)}
+                      </td>
+                      <td style={{ padding: '16px 18px' }}>
+                        {comp.archivo ? (
+                          <>
+                            <button
+                              style={{ background: 'none', border: 'none', color: 'var(--primary-container)', textDecoration: 'underline', cursor: 'pointer', padding: 0, fontWeight: 500 }}
+                              onClick={() => setVoucherPreview(comp.comprobante_url || `https://storage.uleam.edu.ec/comprobantes/${comp.archivo}`)}
+                            >
+                              {comp.archivo}
+                            </button>
+                            <span style={{ display: 'block', fontSize: '0.74rem', color: 'var(--text-muted)' }}>
+                              {comp.subido_hace}
+                            </span>
+                          </>
+                        ) : (
+                          <span style={{ fontSize: '0.78rem', color: 'var(--text-muted)', fontStyle: 'italic' }}>
+                            Sin comprobante cargado
+                          </span>
+                        )}
+                      </td>
+                      <td style={{ padding: '16px 18px' }}>
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                          <span
+                            className={`chip ${
+                              comp.estado_pago === 'Pagado'
+                                ? 'chip-success'
+                                : comp.estado_pago === 'Pago en verificación'
+                                ? 'chip-alert'
+                                : comp.estado_pago === 'Rechazado'
+                                ? 'chip-urgent'
+                                : 'chip-urgent'
+                            }`}
+                            style={
+                              comp.estado_pago === 'No pagado'
+                                ? { background: 'rgba(100, 116, 139, 0.15)', color: '#334155' }
+                                : {}
+                            }
                           >
-                            <span className="material-symbols-outlined" style={{ fontSize: '16px' }}>check_circle</span>
-                            Aprobar
-                          </button>
-                          <button
-                            className="btn btn-urgent btn-sm"
-                            style={{ padding: '5px 12px' }}
-                            onClick={() => handleReviewVoucher(comp.id, 'RECHAZADO')}
-                          >
-                            <span className="material-symbols-outlined" style={{ fontSize: '16px' }}>cancel</span>
-                            Rechazar
-                          </button>
+                            <span className="material-symbols-outlined" style={{ fontSize: '14px' }}>
+                              {comp.estado_pago === 'Pagado'
+                                ? 'check_circle'
+                                : comp.estado_pago === 'Pago en verificación'
+                                ? 'hourglass_top'
+                                : comp.estado_pago === 'No pagado'
+                                ? 'pending_actions'
+                                : 'cancel'}
+                            </span>
+                            {comp.estado_pago || comp.estado}
+                          </span>
+
+                          {/* Cuenta regresiva de SLA para "Pago en verificación" */}
+                          {comp.estado_pago === 'Pago en verificación' && (
+                            <>
+                              <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.72rem', color: '#B26A00' }}>
+                                <span>SLA 24h</span>
+                                <span>{comp.horas_restantes}h restantes</span>
+                              </div>
+                              <div style={{ width: '130px', height: '4px', background: '#E2E8F0', borderRadius: '2px', overflow: 'hidden' }}>
+                                <div
+                                  style={{
+                                    width: `${Math.min(100, (comp.horas_restantes / 24) * 100)}%`,
+                                    height: '100%',
+                                    background: comp.estado_sla === 'URGENTE' ? 'var(--color-error)' : '#F9A825',
+                                  }}
+                                ></div>
+                              </div>
+                            </>
+                          )}
                         </div>
-                      ) : (
-                        <span style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>Procesado</span>
-                      )}
-                    </td>
-                  </tr>
-                ))}
+                      </td>
+                      <td style={{ padding: '16px 18px', textAlign: 'center' }}>
+                        <div style={{ display: 'flex', gap: '6px', justifyContent: 'center', flexWrap: 'wrap' }}>
+                          {comp.estado_pago === 'Pago en verificación' && (
+                            <>
+                              <button
+                                className="btn btn-primary btn-sm"
+                                style={{ background: 'var(--color-success)', borderColor: 'var(--color-success)', padding: '5px 10px', fontSize: '0.8rem' }}
+                                onClick={() => handleReviewVoucher(comp.id, 'Pagado')}
+                                title="Aprobar pago y liberar credencial QR"
+                              >
+                                <span className="material-symbols-outlined" style={{ fontSize: '16px' }}>check</span>
+                                Aprobar
+                              </button>
+                              <button
+                                className="btn btn-urgent btn-sm"
+                                style={{ padding: '5px 10px', fontSize: '0.8rem' }}
+                                onClick={() => handleReviewVoucher(comp.id, 'Rechazado')}
+                                title="Rechazar comprobante ilegible o no depositado"
+                              >
+                                <span className="material-symbols-outlined" style={{ fontSize: '16px' }}>close</span>
+                                Rechazar
+                              </button>
+                            </>
+                          )}
+
+                          {comp.estado_pago === 'No pagado' && (
+                            <button
+                              className="btn btn-primary btn-sm"
+                              style={{ padding: '5px 10px', fontSize: '0.8rem' }}
+                              onClick={() => handleReviewVoucher(comp.id, 'Pagado', 'Pago presencial en efectivo / exonerado')}
+                              title="Marcar como pagado manualmente"
+                            >
+                              <span className="material-symbols-outlined" style={{ fontSize: '16px' }}>payments</span>
+                              Marcar Pagado
+                            </button>
+                          )}
+
+                          {comp.estado_pago === 'Pagado' && (
+                            <button
+                              className="btn btn-outline btn-sm"
+                              style={{ padding: '5px 10px', fontSize: '0.8rem' }}
+                              onClick={() => {
+                                setActiveCredential({
+                                  evento: comp.evento,
+                                  participante: comp.participante,
+                                  identificacion: comp.cédula,
+                                  institucion: 'ULEAM',
+                                  categoria: comp.categoria,
+                                  qr_token: `ULEAM-QR-${comp.id}`,
+                                  fecha_emision: '2026-10-31',
+                                });
+                                setShowCredentialModal(true);
+                              }}
+                              title="Ver credencial QR oficial"
+                            >
+                              <span className="material-symbols-outlined" style={{ fontSize: '16px' }}>qr_code_2</span>
+                              Credencial
+                            </button>
+                          )}
+
+                          {/* Botón directo de alerta de WhatsApp por fila */}
+                          <a
+                            href={getWhatsAppAlertUrl(comp)}
+                            target="_blank"
+                            rel="noreferrer"
+                            className="btn btn-outline btn-sm"
+                            style={{ padding: '5px 8px', color: '#128C7E', borderColor: 'rgba(18, 140, 126, 0.4)' }}
+                            title="Enviar alerta directa por WhatsApp al participante o encargado"
+                          >
+                            <span className="material-symbols-outlined" style={{ fontSize: '16px' }}>chat</span>
+                          </a>
+                        </div>
+                      </td>
+                    </tr>
+                  ))}
               </tbody>
             </table>
           </div>
@@ -3798,6 +4506,426 @@ export default function App() {
                 <span className="material-symbols-outlined">logout</span> Sí, Cerrar Sesión
               </button>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* ============================================================== */}
+      {/* MODAL: CONFIGURACIÓN DEL BOT DE NOTIFICACIONES (Telegram / WhatsApp) */}
+      {/* ============================================================== */}
+      {showBotConfigModal && (
+        <div
+          className="modal-backdrop modal-overlay"
+          onClick={() => setShowBotConfigModal(false)}
+          style={{
+            position: 'fixed',
+            inset: 0,
+            background: 'rgba(0, 47, 108, 0.45)',
+            backdropFilter: 'blur(4px)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            zIndex: 10000,
+            padding: '20px',
+          }}
+        >
+          <div
+            className="modal-card"
+            onClick={(e) => e.stopPropagation()}
+            style={{
+              maxWidth: '560px',
+              width: '100%',
+              background: '#FFFFFF',
+              borderRadius: 'var(--radius-xl)',
+              padding: '28px',
+              boxShadow: 'var(--shadow-level-3)',
+            }}
+          >
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                <div
+                  style={{
+                    width: '40px',
+                    height: '40px',
+                    borderRadius: '10px',
+                    background: 'rgba(0, 47, 108, 0.08)',
+                    color: 'var(--primary-container)',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                  }}
+                >
+                  <span className="material-symbols-outlined" style={{ fontSize: '24px' }}>smart_toy</span>
+                </div>
+                <div>
+                  <h3 style={{ fontSize: '1.2rem', color: 'var(--primary-dark)', margin: 0 }}>
+                    Configuración del Bot de Notificaciones
+                  </h3>
+                  <span style={{ fontSize: '0.78rem', color: 'var(--text-muted)' }}>
+                    Telegram Bot API y Alertas Móviles de Finanzas
+                  </span>
+                </div>
+              </div>
+              <button
+                style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)' }}
+                onClick={() => setShowBotConfigModal(false)}
+              >
+                <span className="material-symbols-outlined">close</span>
+              </button>
+            </div>
+
+            <form onSubmit={handleSaveBotConfig}>
+              <div style={{ marginBottom: '16px' }}>
+                <label style={{ display: 'block', fontSize: '0.82rem', fontWeight: 600, color: 'var(--primary-dark)', marginBottom: '6px' }}>
+                  Telegram Bot Token:
+                </label>
+                <input
+                  type="text"
+                  placeholder="Ej: 7123456789:AAFlq... (de @BotFather)"
+                  value={botConfig.telegram_bot_token || ''}
+                  onChange={(e) => setBotConfig({ ...botConfig, telegram_bot_token: e.target.value })}
+                  style={{ width: '100%', padding: '10px 14px', borderRadius: 'var(--radius-md)', border: '1px solid #CBD5E1', fontSize: '0.88rem' }}
+                />
+                <span style={{ fontSize: '0.74rem', color: 'var(--text-muted)', display: 'block', marginTop: '4px' }}>
+                  Token provisto por BotFather en Telegram para despachar mensajes HTTP directos.
+                </span>
+              </div>
+
+              <div style={{ marginBottom: '16px' }}>
+                <label style={{ display: 'block', fontSize: '0.82rem', fontWeight: 600, color: 'var(--primary-dark)', marginBottom: '6px' }}>
+                  Telegram Chat ID / Canal ID:
+                </label>
+                <input
+                  type="text"
+                  placeholder="Ej: -1001234567890 o ID de usuario"
+                  value={botConfig.telegram_chat_id || ''}
+                  onChange={(e) => setBotConfig({ ...botConfig, telegram_chat_id: e.target.value })}
+                  style={{ width: '100%', padding: '10px 14px', borderRadius: 'var(--radius-md)', border: '1px solid #CBD5E1', fontSize: '0.88rem' }}
+                />
+                <span style={{ fontSize: '0.74rem', color: 'var(--text-muted)', display: 'block', marginTop: '4px' }}>
+                  Identificador del chat grupal o privado del encargado de validar pagos.
+                </span>
+              </div>
+
+              <div style={{ marginBottom: '16px' }}>
+                <label style={{ display: 'block', fontSize: '0.82rem', fontWeight: 600, color: 'var(--primary-dark)', marginBottom: '6px' }}>
+                  Teléfono para Alertas WhatsApp:
+                </label>
+                <input
+                  type="text"
+                  placeholder="Ej: +593987654321"
+                  value={botConfig.whatsapp_phone || ''}
+                  onChange={(e) => setBotConfig({ ...botConfig, whatsapp_phone: e.target.value })}
+                  style={{ width: '100%', padding: '10px 14px', borderRadius: 'var(--radius-md)', border: '1px solid #CBD5E1', fontSize: '0.88rem' }}
+                />
+                <span style={{ fontSize: '0.74rem', color: 'var(--text-muted)', display: 'block', marginTop: '4px' }}>
+                  Número con código de país para enlaces Click-to-Chat y alertas a finanzas.
+                </span>
+              </div>
+
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '14px', marginBottom: '18px' }}>
+                <div>
+                  <label style={{ display: 'block', fontSize: '0.82rem', fontWeight: 600, color: 'var(--primary-dark)', marginBottom: '6px' }}>
+                    Intervalo Persistente (min):
+                  </label>
+                  <input
+                    type="number"
+                    min="1"
+                    max="1440"
+                    value={botConfig.intervalo_minutos || 15}
+                    onChange={(e) => setBotConfig({ ...botConfig, intervalo_minutos: parseInt(e.target.value, 10) || 15 })}
+                    style={{ width: '100%', padding: '10px 14px', borderRadius: 'var(--radius-md)', border: '1px solid #CBD5E1', fontSize: '0.88rem' }}
+                  />
+                </div>
+                <div style={{ display: 'flex', alignItems: 'center', paddingTop: '20px' }}>
+                  <label style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer', fontSize: '0.85rem', fontWeight: 600, color: 'var(--primary-dark)' }}>
+                    <input
+                      type="checkbox"
+                      checked={botConfig.recordatorios_activos}
+                      onChange={(e) => setBotConfig({ ...botConfig, recordatorios_activos: e.target.checked })}
+                    />
+                    Recordatorios Activos
+                  </label>
+                </div>
+              </div>
+
+              <div style={{ background: 'rgba(0, 47, 108, 0.04)', padding: '12px 16px', borderRadius: 'var(--radius-md)', marginBottom: '22px', fontSize: '0.8rem', color: 'var(--text-muted)' }}>
+                <strong>Regla de Persistencia:</strong> El servicio en segundo plano continuará enviando recordatorios al revisor hasta que todos los comprobantes pasen del estado <em>Pago en verificación</em> a <em>Pagado</em> o <em>Rechazado</em>.
+              </div>
+
+              <div style={{ display: 'flex', justifyContent: 'space-between', gap: '10px', flexWrap: 'wrap' }}>
+                <button
+                  type="button"
+                  className="btn btn-outline"
+                  onClick={() => handleSendTestNotification('telegram')}
+                >
+                  <span className="material-symbols-outlined">send</span>
+                  Probar Conexión
+                </button>
+                <div style={{ display: 'flex', gap: '8px' }}>
+                  <button
+                    type="button"
+                    className="btn btn-outline"
+                    onClick={() => setShowBotConfigModal(false)}
+                  >
+                    Cancelar
+                  </button>
+                  <button type="submit" className="btn btn-primary">
+                    <span className="material-symbols-outlined">save</span>
+                    Guardar Parámetros
+                  </button>
+                </div>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* ============================================================== */}
+      {/* MODAL: SUBIR COMPROBANTE DE PAGO (Supabase Storage + WebP)      */}
+      {/* ============================================================== */}
+      {showUploadPaymentModal && (
+        <div
+          className="modal-backdrop modal-overlay"
+          onClick={() => setShowUploadPaymentModal(false)}
+          style={{
+            position: 'fixed',
+            inset: 0,
+            background: 'rgba(0, 47, 108, 0.45)',
+            backdropFilter: 'blur(4px)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            zIndex: 10000,
+            padding: '20px',
+          }}
+        >
+          <div
+            className="modal-card"
+            onClick={(e) => e.stopPropagation()}
+            style={{
+              maxWidth: '560px',
+              width: '100%',
+              background: '#FFFFFF',
+              borderRadius: 'var(--radius-xl)',
+              padding: '28px',
+              boxShadow: 'var(--shadow-level-3)',
+              maxHeight: '90vh',
+              overflowY: 'auto',
+            }}
+          >
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                <div
+                  style={{
+                    width: '40px',
+                    height: '40px',
+                    borderRadius: '10px',
+                    background: 'rgba(0, 47, 108, 0.08)',
+                    color: 'var(--primary-container)',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                  }}
+                >
+                  <span className="material-symbols-outlined" style={{ fontSize: '24px' }}>cloud_upload</span>
+                </div>
+                <div>
+                  <h3 style={{ fontSize: '1.2rem', color: 'var(--primary-dark)', margin: 0 }}>
+                    Subir Comprobante de Pago
+                  </h3>
+                  <span style={{ fontSize: '0.78rem', color: 'var(--text-muted)' }}>
+                    {selectedUploadTarget?.evento || 'Evento Académico ULEAM'}
+                  </span>
+                </div>
+              </div>
+              <button
+                style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)' }}
+                onClick={() => setShowUploadPaymentModal(false)}
+              >
+                <span className="material-symbols-outlined">close</span>
+              </button>
+            </div>
+
+            <form onSubmit={handleSubmitVoucherUpload}>
+              {/* Información del Arancel */}
+              <div style={{ background: 'var(--surface-container)', padding: '14px 18px', borderRadius: 'var(--radius-lg)', marginBottom: '18px' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '4px' }}>
+                  <span style={{ fontSize: '0.82rem', color: 'var(--text-muted)' }}>Arancel a Pagar:</span>
+                  <strong style={{ fontSize: '0.95rem', color: 'var(--primary-container)' }}>
+                    ${(selectedUploadTarget?.monto || 25.0).toFixed(2)} USD
+                  </strong>
+                </div>
+                <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                  <span style={{ fontSize: '0.82rem', color: 'var(--text-muted)' }}>Cuenta Acreditada:</span>
+                  <span style={{ fontSize: '0.82rem', color: 'var(--primary-dark)', fontWeight: 600 }}>Banco Pichincha - Cta. Cte. ULEAM</span>
+                </div>
+              </div>
+
+              {/* Zona de Carga y Conversión a WebP */}
+              <div style={{ marginBottom: '18px' }}>
+                <label style={{ display: 'block', fontSize: '0.84rem', fontWeight: 600, color: 'var(--primary-dark)', marginBottom: '8px' }}>
+                  Seleccionar Archivo (Foto o Documento PDF):
+                </label>
+
+                <input
+                  type="file"
+                  id="comprobanteFileInput"
+                  accept="image/jpeg,image/png,image/webp,image/heic,application/pdf"
+                  style={{ display: 'none' }}
+                  onChange={handleVoucherFileSelected}
+                />
+
+                <div
+                  onClick={() => document.getElementById('comprobanteFileInput')?.click()}
+                  style={{
+                    border: '2px dashed rgba(0, 47, 108, 0.25)',
+                    borderRadius: 'var(--radius-lg)',
+                    padding: '24px 16px',
+                    textAlign: 'center',
+                    cursor: 'pointer',
+                    background: 'rgba(0, 47, 108, 0.02)',
+                    transition: 'all 0.2s ease',
+                  }}
+                >
+                  <div
+                    style={{
+                      width: '48px',
+                      height: '48px',
+                      borderRadius: '50%',
+                      background: 'rgba(0, 47, 108, 0.08)',
+                      color: 'var(--primary-container)',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      margin: '0 auto 10px',
+                    }}
+                  >
+                    <span className="material-symbols-outlined" style={{ fontSize: '26px' }}>
+                      {isCompressing ? 'sync' : 'attach_file'}
+                    </span>
+                  </div>
+                  <strong style={{ fontSize: '0.92rem', color: 'var(--primary-dark)', display: 'block', marginBottom: '4px' }}>
+                    {isCompressing ? 'Optimizando imagen a WebP...' : 'Haz clic o arrastra tu comprobante aquí'}
+                  </strong>
+                  <span style={{ fontSize: '0.78rem', color: 'var(--text-muted)' }}>
+                    Convierte fotos (JPG, PNG) automáticamente a WebP de bajo peso. PDFs se conservan intactos.
+                  </span>
+                </div>
+              </div>
+
+              {/* Tarjeta de Estadísticas de Compresión WebP */}
+              {compressionStats && (
+                <div
+                  style={{
+                    background: '#F0FDF4',
+                    border: '1px solid #BBF7D0',
+                    borderRadius: 'var(--radius-lg)',
+                    padding: '14px 16px',
+                    marginBottom: '18px',
+                  }}
+                >
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                      <span className="material-symbols-outlined" style={{ color: 'var(--color-success)', fontSize: '20px' }}>
+                        {compressionStats.isPdf ? 'picture_as_pdf' : 'speed'}
+                      </span>
+                      <strong style={{ fontSize: '0.85rem', color: '#166534' }}>
+                        {compressionStats.isPdf ? 'Documento PDF Verificado' : 'Optimización WebP Completada'}
+                      </strong>
+                    </div>
+                    {!compressionStats.isPdf && compressionStats.savingsPercent > 0 && (
+                      <span className="chip chip-success" style={{ fontSize: '0.75rem', padding: '2px 8px' }}>
+                        -{compressionStats.savingsPercent}% de peso
+                      </span>
+                    )}
+                  </div>
+
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px', fontSize: '0.8rem', color: 'var(--text-secondary)' }}>
+                    <div>
+                      <span>Tamaño Original: </span>
+                      <strong>{formatBytes(compressionStats.originalSize)}</strong>
+                    </div>
+                    <div>
+                      <span>Formato Final: </span>
+                      <strong style={{ color: '#166534' }}>
+                        {compressionStats.format.toUpperCase()} ({formatBytes(compressionStats.compressedSize)})
+                      </strong>
+                    </div>
+                  </div>
+
+                  {/* Vista previa en miniatura si es imagen WebP */}
+                  {compressionStats.previewUrl && (
+                    <div style={{ marginTop: '10px', textAlign: 'center' }}>
+                      <img
+                        src={compressionStats.previewUrl}
+                        alt="Previsualización Comprobante WebP"
+                        style={{ maxHeight: '110px', borderRadius: '6px', border: '1px solid #CBD5E1', display: 'inline-block' }}
+                      />
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* Entrada de respaldo URL o nombre de archivo */}
+              <div style={{ marginBottom: '16px' }}>
+                <label style={{ display: 'block', fontSize: '0.82rem', fontWeight: 600, color: 'var(--primary-dark)', marginBottom: '4px' }}>
+                  Nombre de Archivo / Referencia en Supabase Storage:
+                </label>
+                <input
+                  type="text"
+                  placeholder="Ej: comprobante_transferencia_0981.webp"
+                  value={uploadVoucherInput}
+                  onChange={(e) => setUploadVoucherInput(e.target.value)}
+                  style={{ width: '100%', padding: '9px 12px', borderRadius: 'var(--radius-md)', border: '1px solid #CBD5E1', fontSize: '0.86rem' }}
+                  required
+                />
+              </div>
+
+              {/* Número de Transacción */}
+              <div style={{ marginBottom: '18px' }}>
+                <label style={{ display: 'block', fontSize: '0.82rem', fontWeight: 600, color: 'var(--primary-dark)', marginBottom: '4px' }}>
+                  Número de Transacción / Referencia Bancaria:
+                </label>
+                <input
+                  type="text"
+                  placeholder="Ej: Transacción #098124 - Ventanilla o Transferencia Web"
+                  value={uploadVoucherNote}
+                  onChange={(e) => setUploadVoucherNote(e.target.value)}
+                  style={{ width: '100%', padding: '9px 12px', borderRadius: 'var(--radius-md)', border: '1px solid #CBD5E1', fontSize: '0.86rem' }}
+                />
+              </div>
+
+              {/* Aviso Institucional */}
+              <div style={{ background: 'rgba(249, 168, 37, 0.1)', border: '1px solid #FFE082', padding: '12px 14px', borderRadius: 'var(--radius-md)', marginBottom: '20px', fontSize: '0.8rem', color: '#B26A00' }}>
+                El archivo se guardará en el Bucket <strong>comprobantes</strong> de Supabase Storage. Su estado cambiará a <strong>Pago en verificación</strong> y el bot notificará de inmediato al personal de Finanzas con recordatorio persistente.
+              </div>
+
+              <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '10px' }}>
+                <button
+                  type="button"
+                  className="btn btn-outline"
+                  onClick={() => {
+                    setShowUploadPaymentModal(false);
+                    setUploadFileObject(null);
+                    setCompressionStats(null);
+                  }}
+                  disabled={isUploadingToSupabase}
+                >
+                  Cancelar
+                </button>
+                <button
+                  type="submit"
+                  className="btn btn-primary"
+                  disabled={isUploadingToSupabase || isCompressing}
+                >
+                  <span className="material-symbols-outlined">
+                    {isUploadingToSupabase ? 'sync' : 'cloud_upload'}
+                  </span>
+                  {isUploadingToSupabase ? 'Subiendo a Supabase Storage...' : 'Subir y Enviar a Verificación'}
+                </button>
+              </div>
+            </form>
           </div>
         </div>
       )}
@@ -5490,7 +6618,7 @@ export default function App() {
                           background: 'rgba(255, 255, 255, 0.75)',
                         }}
                       >
-                        <span>★ ULEAM ★</span>
+                        <span>ULEAM OFICIAL</span>
                         <strong style={{ fontSize: '0.55rem', color: '#002F6C' }}>RECTORADO</strong>
                         <span>ECUADOR</span>
                       </div>

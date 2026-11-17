@@ -31,9 +31,11 @@ namespace UleamEventos.Api.Models
     // Estados de Inscripción
     public static class EstadosInscripcion
     {
+        public const string PendientePago = "PENDIENTE_PAGO";
         public const string PendienteRevision = "PENDIENTE_REVISION";
         public const string Confirmada = "CONFIRMADA";
         public const string Cancelada = "CANCELADA";
+        public const string Rechazada = "RECHAZADA";
         public const string Exonerada = "EXONERADA";
     }
 
@@ -45,6 +47,15 @@ namespace UleamEventos.Api.Models
         public const string Aprobado = "APROBADO";
         public const string Rechazado = "RECHAZADO";
         public const string Expirado = "EXPIRADO";
+    }
+
+    // Estados de Pago Unificados
+    public static class EstadosPago
+    {
+        public const string NoPagado = "No pagado";
+        public const string PagoEnVerificacion = "Pago en verificación";
+        public const string Pagado = "Pagado";
+        public const string Rechazado = "Rechazado";
     }
 
     // Entidad Usuario
@@ -82,6 +93,9 @@ namespace UleamEventos.Api.Models
 
         [JsonPropertyName("creado_at")]
         public DateTime CreadoAt { get; set; } = DateTime.UtcNow;
+
+        [JsonPropertyName("actualizado_at")]
+        public DateTime ActualizadoAt { get; set; } = DateTime.UtcNow;
 
         [JsonPropertyName("rol")]
         public string Rol { get; set; } = Roles.Asistente;
@@ -304,6 +318,9 @@ namespace UleamEventos.Api.Models
         [JsonPropertyName("estado")]
         public string Estado { get; set; } = EstadosInscripcion.Confirmada;
 
+        [JsonPropertyName("estado_pago")]
+        public string EstadoPago { get; set; } = EstadosPago.Pagado;
+
         [JsonPropertyName("exonerado_por")]
         public Guid? ExoneradoPor { get; set; }
 
@@ -359,6 +376,9 @@ namespace UleamEventos.Api.Models
 
         [JsonPropertyName("estado_revision")]
         public string EstadoRevision { get; set; } = EstadosComprobante.EnRevision;
+
+        [JsonPropertyName("estado_pago")]
+        public string EstadoPago { get; set; } = EstadosPago.PagoEnVerificacion;
 
         [JsonPropertyName("auditor_id")]
         public Guid? AuditorId { get; set; }
@@ -484,5 +504,30 @@ namespace UleamEventos.Api.Models
 
         [JsonPropertyName("certificados_emitidos")]
         public int CertificadosEmitidos { get; set; }
+    }
+
+    // Configuración del Bot de Notificaciones (Telegram / WhatsApp)
+    public class BotNotificationConfig
+    {
+        [JsonPropertyName("telegram_bot_token")]
+        public string TelegramBotToken { get; set; } = string.Empty;
+
+        [JsonPropertyName("telegram_chat_id")]
+        public string TelegramChatId { get; set; } = string.Empty;
+
+        [JsonPropertyName("whatsapp_phone")]
+        public string WhatsAppPhone { get; set; } = string.Empty;
+
+        [JsonPropertyName("recordatorios_activos")]
+        public bool RecordatoriosActivos { get; set; } = true;
+
+        [JsonPropertyName("intervalo_minutos")]
+        public int IntervaloMinutos { get; set; } = 15;
+
+        [JsonPropertyName("ultimo_envio_at")]
+        public DateTime? UltimoEnvioAt { get; set; }
+
+        [JsonPropertyName("total_notificaciones_enviadas")]
+        public int TotalNotificacionesEnviadas { get; set; }
     }
 }

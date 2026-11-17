@@ -11,6 +11,7 @@ using UleamEventos.Api.Configuration;
 using UleamEventos.Api.Middleware;
 using UleamEventos.Api.Repositories;
 using UleamEventos.Api.Security;
+using UleamEventos.Api.Services;
 
 // 1. Cargar variables de entorno desde .env si existe
 EnvLoader.Load();
@@ -30,6 +31,8 @@ builder.WebHost.ConfigureKestrel(options =>
 builder.Services.AddSingleton(config);
 builder.Services.AddSingleton<JwtService>();
 builder.Services.AddSingleton<IEventRepository, EventRepository>();
+builder.Services.AddHttpClient<IPaymentNotificationService, PaymentNotificationService>();
+builder.Services.AddHostedService<PaymentReminderBackgroundService>();
 
 // 5. Configurar CORS permisivo para desarrollo y red local
 builder.Services.AddCors(options =>

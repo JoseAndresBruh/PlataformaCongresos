@@ -20,6 +20,13 @@ namespace UleamEventos.Api.Repositories
         Task<IEnumerable<Inscripcion>> GetRegistrationsByEventAsync(Guid? eventoId);
         Task<bool> UpdateRegistrationStatusAsync(Guid id, string estado, Guid? auditorId);
 
+        Task<Inscripcion?> GetRegistrationByIdAsync(Guid id);
+        Task<IEnumerable<Inscripcion>> GetRegistrationsByPaymentStatusAsync(string? estadoPago);
+        Task<bool> UpdatePaymentStatusAsync(Guid id, string nuevoEstadoPago, Guid? auditorId, string? observaciones);
+        Task<BotNotificationConfig> GetBotConfigAsync();
+        Task UpdateBotConfigAsync(BotNotificationConfig config);
+        Task RecordNotificationSentAsync();
+
         Task<(Asistencia? Asistencia, Usuario? Usuario, string Mensaje, bool Exito)> ProcessCheckInAsync(string tokenQr, Guid? sesionId, Guid? escaneadoPor);
         Task<MetricasDashboard> GetDashboardMetricsAsync();
         Task SubmitSurveyAsync(RespuestaEncuesta respuesta);

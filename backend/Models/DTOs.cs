@@ -105,4 +105,47 @@ namespace UleamEventos.Api.Models
         [JsonPropertyName("postgres_db")]
         public bool PostgresDb { get; set; } = false;
     }
+
+    // DTOs de Notificaciones y Bots
+    public class TestNotificationRequest
+    {
+        [JsonPropertyName("mensaje")]
+        public string? Mensaje { get; set; }
+
+        [JsonPropertyName("canal")]
+        public string? Canal { get; set; } // "telegram" o "whatsapp"
+    }
+
+    public class NotificationResponse
+    {
+        [JsonPropertyName("exito")]
+        public bool Exito { get; set; }
+
+        [JsonPropertyName("mensaje")]
+        public string Mensaje { get; set; } = string.Empty;
+
+        [JsonPropertyName("canal")]
+        public string Canal { get; set; } = string.Empty;
+
+        [JsonPropertyName("url_whatsapp")]
+        public string? UrlWhatsApp { get; set; }
+    }
+
+    public class ReviewPaymentRequest
+    {
+        [JsonPropertyName("estado_pago")]
+        public string EstadoPago { get; set; } = string.Empty; // "Pagado" o "Rechazado"
+
+        [JsonPropertyName("observaciones")]
+        public string? Observaciones { get; set; }
+    }
+
+    public class UploadComprobanteRequest
+    {
+        [JsonPropertyName("comprobante_url")]
+        public string ComprobanteUrl { get; set; } = string.Empty;
+
+        [JsonPropertyName("observaciones")]
+        public string? Observaciones { get; set; }
+    }
 }

@@ -11,6 +11,13 @@ namespace UleamEventos.Api.Configuration
         public int JwtExpirationHours { get; set; } = 24;
         public string CorsAllowedOrigins { get; set; } = "*";
         public string Env { get; set; } = "development";
+        public string TelegramBotToken { get; set; } = string.Empty;
+        public string TelegramChatId { get; set; } = string.Empty;
+        public string WhatsAppPhone { get; set; } = string.Empty;
+        public int NotificationIntervalMinutes { get; set; } = 15;
+        public string SupabaseUrl { get; set; } = "https://xoqzmiqdsgtxlhhpandb.supabase.co";
+        public string SupabaseKey { get; set; } = string.Empty;
+        public string SupabaseBucket { get; set; } = "comprobantes";
 
         public static AppConfig Load(IConfiguration configuration)
         {
@@ -55,6 +62,43 @@ namespace UleamEventos.Api.Configuration
 
             // Environment
             config.Env = Environment.GetEnvironmentVariable("ENV") ?? "development";
+
+            // Telegram & WhatsApp Notifications
+            config.TelegramBotToken = Environment.GetEnvironmentVariable("TELEGRAM_BOT_TOKEN") 
+                ?? configuration.GetValue<string>("Notifications:TelegramBotToken") 
+                ?? string.Empty;
+
+            config.TelegramChatId = Environment.GetEnvironmentVariable("TELEGRAM_CHAT_ID") 
+                ?? configuration.GetValue<string>("Notifications:TelegramChatId") 
+                ?? string.Empty;
+
+            config.WhatsAppPhone = Environment.GetEnvironmentVariable("WHATSAPP_PHONE") 
+                ?? configuration.GetValue<string>("Notifications:WhatsAppPhone") 
+                ?? string.Empty;
+
+            var envInterval = Environment.GetEnvironmentVariable("NOTIFICATION_INTERVAL_MINUTES");
+            if (!string.IsNullOrEmpty(envInterval) && int.TryParse(envInterval, out var interval))
+            {
+                config.NotificationIntervalMinutes = interval;
+            }
+            else
+            {
+                config.NotificationIntervalMinutes = configuration.GetValue<int>("Notifications:IntervalMinutes", 15);
+            }
+
+            // Supabase Storage & Project Config
+            config.SupabaseUrl = Environment.GetEnvironmentVariable("SUPABASE_URL") 
+                ?? configuration.GetValue<string>("Supabase:Url") 
+                ?? "https://xoqzmiqdsgtxlhhpandb.supabase.co";
+
+            config.SupabaseKey = Environment.GetEnvironmentVariable("SUPABASE_KEY") 
+                ?? Environment.GetEnvironmentVariable("SUPABASE_ANON_KEY") 
+                ?? configuration.GetValue<string>("Supabase:Key") 
+                ?? string.Empty;
+
+            config.SupabaseBucket = Environment.GetEnvironmentVariable("SUPABASE_BUCKET") 
+                ?? configuration.GetValue<string>("Supabase:Bucket") 
+                ?? "comprobantes";
 
             return config;
         }

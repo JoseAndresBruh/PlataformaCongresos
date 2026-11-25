@@ -20,8 +20,8 @@ frontend/node_modules/
 backend/server.exe
 backend/bin/
 backend/obj/
-[Bb]in/
-[Oo]bj/
+bin/
+obj/
 
 # Archivos de entorno y credenciales (NUNCA SUBIR A GIT)
 .env
@@ -34,3 +34,6 @@ frontend/.env
 frontend/.env.*
 !backend/.env.example
 !frontend/.env.example
+client_secret_*.json
+*.secret.json
+credentials.json

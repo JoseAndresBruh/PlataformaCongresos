@@ -105,5 +105,60 @@ namespace UleamEventos.Api.Controllers
                 usuario = newUser
             });
         }
+
+        [HttpPost("google")]
+        public async Task<IActionResult> GoogleAuth([FromBody] GoogleAuthRequest req)
+        {
+            if (string.IsNullOrWhiteSpace(req.Correo))
+            {
+                return BadRequest(new { error = "El correo electrónico de Google es obligatorio" });
+            }
+
+            var user = await _repo.FindUserByEmailAsync(req.Correo.Trim());
+            if (user == null)
+            {
+                var fullName = (req.Nombres ?? "").Trim();
+                var parts = fullName.Split(' ', 2, StringSplitOptions.RemoveEmptyEntries);
+                var nombres = parts.Length > 0 ? parts[0] : "Participante";
+                var apellidos = !string.IsNullOrWhiteSpace(req.Apellidos) 
+                    ? req.Apellidos.Trim() 
+                    : (parts.Length > 1 ? parts[1] : "Google");
+
+                user = new Usuario
+                {
+                    Id = Guid.NewGuid(),
+                    Correo = req.Correo.Trim().ToLowerInvariant(),
+                    ContrasenaHash = PasswordHasher.HashPassword(Guid.NewGuid().ToString("N")),
+                    Nombres = nombres,
+                    Apellidos = apellidos,
+                    Identificacion = "G-" + Guid.NewGuid().ToString("N")[..8].ToUpperInvariant(),
+                    Institucion = "Google Workspace / Gmail",
+                    UrlFotoPerfil = req.UrlFotoPerfil,
+                    CorreoVerificado = true,
+                    Rol = Roles.Asistente,
+                    CreadoAt = DateTime.UtcNow
+                };
+
+                await _repo.CreateUserAsync(user);
+            }
+
+            var token = _jwtService.GenerateToken(user);
+
+            return Ok(new
+            {
+                token,
+                usuario = new
+                {
+                    id = user.Id,
+                    correo = user.Correo,
+                    nombres = user.Nombres,
+                    apellidos = user.Apellidos,
+                    rol = user.Rol,
+                    institucion = user.Institucion,
+                    identificacion = user.Identificacion,
+                    url_foto_perfil = user.UrlFotoPerfil
+                }
+            });
+        }
     }
 }

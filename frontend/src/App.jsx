@@ -8,14 +8,10 @@ import {
 import NotFoundView from './components/NotFoundView';
 import Search404State from './components/Search404State';
 
-// API Base dinámica (compatible con Vite Proxy, Localhost y Red Local Wi-Fi para móviles)
-const API_BASE = (typeof import.meta !== 'undefined' && import.meta.env && import.meta.env.VITE_API_BASE && typeof window !== 'undefined' && window.location.port !== '5173')
-  ? import.meta.env.VITE_API_BASE
-  : (typeof window !== 'undefined' && window.location.port === '5173'
-      ? '/api/v1'
-      : (typeof window !== 'undefined' && window.location.hostname !== 'localhost'
-          ? `${window.location.protocol}//${window.location.hostname}:8080/api/v1`
-          : 'http://localhost:8080/api/v1'));
+// API Base dinámica: respeta VITE_API_BASE si está definido, o usa '/api/v1' que es proxificado por Vite (local) y Vercel (producción)
+const API_BASE = (typeof import.meta !== 'undefined' && import.meta.env && import.meta.env.VITE_API_BASE)
+  ? import.meta.env.VITE_API_BASE.replace(/\/+$/, '')
+  : '/api/v1';
 
 
 const INITIAL_EVENTOS = [
@@ -616,7 +612,31 @@ export default function App() {
     telefono: '0987654321',
   });
   const [authLoading, setAuthLoading] = useState(false);
+  const [googleLoading, setGoogleLoading] = useState(false);
   const [authError, setAuthError] = useState(null);
+
+  // Desbloqueo automático al presionar botón Atrás en el navegador o cancelar OAuth (BFCache)
+  useEffect(() => {
+    const handleResetAuth = () => {
+      setAuthLoading(false);
+      setGoogleLoading(false);
+    };
+
+    window.addEventListener('pageshow', handleResetAuth);
+    window.addEventListener('focus', handleResetAuth);
+    const handleVisibility = () => {
+      if (document.visibilityState === 'visible') {
+        handleResetAuth();
+      }
+    };
+    document.addEventListener('visibilitychange', handleVisibility);
+
+    return () => {
+      window.removeEventListener('pageshow', handleResetAuth);
+      window.removeEventListener('focus', handleResetAuth);
+      document.removeEventListener('visibilitychange', handleVisibility);
+    };
+  }, []);
 
   // Catálogo de Eventos y Filtros
   const [eventos, setEventos] = useState(INITIAL_EVENTOS);
@@ -645,18 +665,20 @@ export default function App() {
   const [validationResult, setValidationResult] = useState(null);
   const [voucherPreview, setVoucherPreview] = useState(null);
 
-  // Formulario de Inscripción (Flujo 3 pasos)
+  // Formulario de Inscripción (Flujo 3 pasos - Datos limpios y soporte para borrador de sesión)
   const [registerStep, setRegisterStep] = useState(1);
+  const [pendingRegistrationDraft, setPendingRegistrationDraft] = useState(null);
   const [registrationForm, setRegistrationForm] = useState({
     categoria_id: '',
     categoria_nombre: '',
     categoria_precio: 0,
-    nombres: 'Karla Jamileth',
-    apellidos: 'Andrade Mendoza',
-    identificacion: '1317890123',
-    correo: 'estudiante@uleam.edu.ec',
-    institucion: 'Universidad Laica Eloy Alfaro de Manabí',
-    comprobante_archivo: 'transferencia_pichincha_098231.pdf',
+    nombres: '',
+    apellidos: '',
+    identificacion: '',
+    correo: '',
+    institucion: '',
+    comprobante_archivo: '',
+    codigo_pago: '',
   });
 
   // Formulario de Creación de Evento (RF-006)
@@ -681,9 +703,9 @@ export default function App() {
   const [faqSearchQuery, setFaqSearchQuery] = useState('');
   const [expandedFaq, setExpandedFaq] = useState(null);
   const [ticketForm, setTicketForm] = useState({
-    nombre: 'Karla Jamileth Andrade Mendoza',
-    correo: 'estudiante@uleam.edu.ec',
-    cedula: '1317890123',
+    nombre: '',
+    correo: '',
+    cedula: '',
     categoria: 'PAGOS_COMPROBANTES',
     prioridad: 'ALTA',
     asunto: '',
@@ -722,7 +744,7 @@ export default function App() {
 
   // Configuración del Bot de Notificaciones (Telegram / WhatsApp) y Estados de Pago
   const [botConfig, setBotConfig] = useState({
-    telegram_bot_token: '',
+    telegram_bot_token: '9190712678:AAFZQ9Al_IxHRY-VEHTlEHty0jr6hfRcRjM',
     telegram_chat_id: '',
     whatsapp_phone: '+593987654321',
     recordatorios_activos: true,
@@ -730,6 +752,7 @@ export default function App() {
     ultimo_envio_at: null,
     total_notificaciones_enviadas: 14,
   });
+  const [isDetectingChatId, setIsDetectingChatId] = useState(false);
   const [showBotConfigModal, setShowBotConfigModal] = useState(false);
   const [paymentFilter, setPaymentFilter] = useState('TODOS');
   const [showUploadPaymentModal, setShowUploadPaymentModal] = useState(false);
@@ -952,10 +975,86 @@ export default function App() {
       })
       .catch(() => {});
 
+    // Detección de retorno de autenticación Google OAuth desde Supabase
+    if (typeof window !== 'undefined' && window.location.hash.includes('access_token=')) {
+      const hash = window.location.hash.substring(1);
+      const params = new URLSearchParams(hash);
+      const accessToken = params.get('access_token');
+      const supabaseUrl = (import.meta.env.VITE_SUPABASE_URL || 'https://xoqzmiqdsgtxlhhpandb.supabase.co').replace(/\/+$/, '');
+      const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY || 'sb_publishable_4U2aMYbFJd50FFsx04n35Q_iUKuxIT6';
+
+      if (accessToken) {
+        fetch(`${supabaseUrl}/auth/v1/user`, {
+          headers: {
+            Authorization: `Bearer ${accessToken}`,
+            apikey: supabaseAnonKey,
+          },
+        })
+          .then((res) => (res.ok ? res.json() : null))
+          .then(async (googleUser) => {
+            if (googleUser && googleUser.email) {
+              const fullName = googleUser.user_metadata?.full_name || googleUser.user_metadata?.name || '';
+              const parts = fullName.split(' ', 2);
+              const nombres = parts[0] || 'Participante';
+              const apellidos = parts[1] || 'Google';
+
+              // Sincronizar usuario con el backend C# (.NET 9)
+              try {
+                const syncRes = await fetch(`${API_BASE}/auth/google`, {
+                  method: 'POST',
+                  headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify({
+                    correo: googleUser.email,
+                    nombres,
+                    apellidos,
+                    url_foto_perfil: googleUser.user_metadata?.avatar_url || googleUser.user_metadata?.picture || null,
+                  }),
+                });
+
+                if (syncRes.ok) {
+                  const syncData = await syncRes.json();
+                  localStorage.setItem('uleam_jwt_token', syncData.token);
+                  localStorage.setItem('uleam_session_user', JSON.stringify(syncData.usuario));
+                  setCurrentUser(syncData.usuario);
+                  showToast(`Bienvenido(a), ${syncData.usuario.nombres}. Sesión iniciada con Google.`);
+                }
+              } catch (err) {
+                console.error('Error sincronizando usuario Google:', err);
+              }
+            }
+          })
+          .catch((err) => console.error('Error obteniendo usuario Supabase:', err))
+          .finally(() => {
+            window.history.replaceState({}, document.title, window.location.pathname);
+          });
+      }
+    }
+
     return () => {
       ignore = true;
     };
   }, []);
+
+  // Reanudar automáticamente borrador de inscripción al iniciar sesión (Google / Manual)
+  useEffect(() => {
+    if (currentUser && pendingRegistrationDraft) {
+      const draft = pendingRegistrationDraft;
+      setSelectedEvent(draft.event);
+      setRegistrationForm({
+        ...draft.form,
+        nombres: currentUser.nombres || draft.form.nombres,
+        apellidos: currentUser.apellidos || draft.form.apellidos,
+        correo: currentUser.correo || draft.form.correo,
+        identificacion: currentUser.identificacion || draft.form.identificacion,
+        institucion: currentUser.institucion || draft.form.institucion || 'Universidad Laica Eloy Alfaro de Manabí',
+      });
+      setRegisterStep(3);
+      setShowAuthModal(false);
+      setShowRegisterModal(true);
+      setPendingRegistrationDraft(null);
+      showToast(`¡Sesión iniciada con éxito! Continuando con la confirmación de ${draft.event.nombre}.`);
+    }
+  }, [currentUser, pendingRegistrationDraft]);
 
   // ==============================================================
   // ENRUTADOR SPA NATIVO Y GESTIÓN DE ERROR 404 / BÚSQUEDA
@@ -1075,32 +1174,80 @@ export default function App() {
     });
   }, [eventos, searchQuery, selectedModality]);
 
-  // Iniciar Flujo de Inscripción
+  // Iniciar Flujo de Inscripción con Validación de Registro Duplicado
   const handleStartRegister = (event) => {
-    setSelectedEvent(event);
-    if (event.categorias && event.categorias.length > 0) {
-      setRegistrationForm((prev) => ({
-        ...prev,
-        categoria_id: event.categorias[0].id,
-        categoria_nombre: event.categorias[0].nombre,
-        categoria_precio: event.categorias[0].precio,
-      }));
+    // 1. Validar si ya está inscrito en este mismo evento para evitar duplicados y conflictos de arancel
+    const yaInscrito = comprobantesPendientes.some((c) => {
+      const matchEvento = c.evento && (
+        c.evento.toLowerCase().includes(event.nombre.toLowerCase().slice(0, 15)) ||
+        event.nombre.toLowerCase().includes(c.evento.toLowerCase().slice(0, 15))
+      );
+      const matchUser = currentUser && (
+        c.correo?.toLowerCase() === currentUser.correo?.toLowerCase() ||
+        c.cédula === currentUser.identificacion
+      );
+      return matchEvento && matchUser;
+    });
+
+    if (yaInscrito) {
+      showToast('⚠️ Ya te encuentras inscrito en este evento académico (Categoría: Estudiante/Gratuito). Por normativa institucional, no es posible duplicar tu registro ni registrarte en un arancel diferente.');
+      return;
     }
+
+    setSelectedEvent(event);
+    const firstCat = event.categorias && event.categorias.length > 0 ? event.categorias[0] : null;
+    const initialPaymentCode = `PAGO-ULEAM-${Math.floor(100000 + Math.random() * 900000)}`;
+
+    setRegistrationForm({
+      categoria_id: firstCat ? firstCat.id : '',
+      categoria_nombre: firstCat ? firstCat.nombre : 'General',
+      categoria_precio: firstCat ? firstCat.precio : 0,
+      nombres: currentUser?.nombres || '',
+      apellidos: currentUser?.apellidos || '',
+      identificacion: currentUser?.identificacion || '',
+      correo: currentUser?.correo || '',
+      institucion: currentUser?.institucion || (currentUser ? 'Universidad Laica Eloy Alfaro de Manabí' : ''),
+      comprobante_archivo: '',
+      codigo_pago: initialPaymentCode,
+    });
     setRegisterStep(1);
     setShowRegisterModal(true);
+  };
+
+  // Paso 2 -> Paso 3: Validar datos y requerir inicio de sesión si es invitado
+  const handleProceedToStep3 = () => {
+    if (!registrationForm.nombres.trim() || !registrationForm.apellidos.trim() || !registrationForm.identificacion.trim() || !registrationForm.correo.trim()) {
+      showToast('Por favor completa todos tus datos personales para continuar.');
+      return;
+    }
+
+    // Si no ha iniciado sesión, guardamos el borrador y le solicitamos iniciar sesión
+    if (!currentUser) {
+      setPendingRegistrationDraft({
+        event: selectedEvent,
+        form: { ...registrationForm },
+      });
+      setShowRegisterModal(false);
+      setShowAuthModal(true);
+      showToast('Para continuar con el registro y emitir tu acreditación, por favor inicia sesión con tu cuenta institucional o Google.');
+      return;
+    }
+
+    setRegisterStep(3);
   };
 
   // Confirmar Inscripción en Backend
   const handleConfirmRegistration = async () => {
     const payload = {
       evento_id: selectedEvent.id,
-      usuario_id: '00000000-0000-0000-0000-000000000006',
+      usuario_id: currentUser ? currentUser.id : '00000000-0000-0000-0000-000000000006',
       categoria_id: registrationForm.categoria_id,
       usuario_nombre: `${registrationForm.nombres} ${registrationForm.apellidos}`,
       usuario_correo: registrationForm.correo,
       categoria_nombre: registrationForm.categoria_nombre,
       categoria_precio: registrationForm.categoria_precio,
-      comprobante_url: registrationForm.categoria_precio > 0 ? registrationForm.comprobante_archivo : '',
+      comprobante_url: registrationForm.categoria_precio > 0 ? (registrationForm.comprobante_archivo || 'transferencia_adjunta.pdf') : '',
+      codigo_pago: registrationForm.codigo_pago,
     };
 
     try {
@@ -1113,26 +1260,45 @@ export default function App() {
       // Manejo transparente
     }
 
-    const generatedToken = `ULEAM-QR-${selectedEvent.id.slice(0, 8)}-${Date.now()}`;
-    const newCred = {
-      evento: selectedEvent.nombre,
-      participante: `${registrationForm.nombres} ${registrationForm.apellidos}`,
-      identificacion: registrationForm.identificacion,
-      institucion: registrationForm.institucion,
-      categoria: registrationForm.categoria_nombre,
-      qr_token: generatedToken,
-      fecha_emision: new Date().toLocaleDateString('es-EC'),
-    };
-
-    setActiveCredential(newCred);
-    setShowRegisterModal(false);
-
     if (registrationForm.categoria_precio > 0) {
-      showToast('Comprobante subido. Estado: EN REVISIÓN (24h de plazo asignado).');
+      const nuevoComprobante = {
+        id: `70000000-0000-0000-0000-${Date.now().toString().slice(-12)}`,
+        participante: `${registrationForm.nombres} ${registrationForm.apellidos}`,
+        cédula: registrationForm.identificacion,
+        correo: registrationForm.correo,
+        categoria: registrationForm.categoria_nombre,
+        monto: registrationForm.categoria_precio,
+        evento: selectedEvent.nombre,
+        archivo: registrationForm.comprobante_archivo || 'comprobante_transferencia.pdf',
+        comprobante_url: registrationForm.comprobante_archivo || 'https://storage.uleam.edu.ec/comprobantes/transferencia-banco-pichincha-098231.pdf',
+        estado_pago: 'Pago en verificación',
+        estado: 'PENDIENTE_REVISION',
+        subido_hace: 'Hace un momento',
+        horas_restantes: 24.0,
+        estado_sla: 'A_TIEMPO',
+        codigo_pago: registrationForm.codigo_pago,
+      };
+
+      setComprobantesPendientes((prev) => [nuevoComprobante, ...prev]);
+      setShowRegisterModal(false);
+      showToast(`¡Inscripción registrada con Código ${registrationForm.codigo_pago}! Comprobante en verificación (SLA reglamentario de 24 Horas).`);
       setCurrentView('mis_eventos');
     } else {
+      const generatedToken = `ULEAM-QR-${selectedEvent.id ? selectedEvent.id.slice(0, 8) : 'EVENT'}-${Date.now()}`;
+      const newCred = {
+        evento: selectedEvent.nombre,
+        participante: `${registrationForm.nombres} ${registrationForm.apellidos}`,
+        identificacion: registrationForm.identificacion,
+        institucion: registrationForm.institucion,
+        categoria: registrationForm.categoria_nombre,
+        qr_token: generatedToken,
+        fecha_emision: new Date().toLocaleDateString('es-EC'),
+      };
+
+      setActiveCredential(newCred);
+      setShowRegisterModal(false);
       setShowCredentialModal(true);
-      showToast('¡Inscripción confirmada! Tu credencial QR ha sido generada.');
+      showToast('¡Inscripción Gratuita confirmada! Tu credencial QR ha sido generada.');
     }
   };
 
@@ -1371,6 +1537,31 @@ export default function App() {
       showToast('Configuración del Bot guardada localmente.');
     }
     setShowBotConfigModal(false);
+  };
+
+  // Detección Automática de Chat ID vía Telegram Bot API getUpdates
+  const handleDetectTelegramChatId = async () => {
+    setIsDetectingChatId(true);
+    try {
+      const token = botConfig.telegram_bot_token || '9190712678:AAFZQ9Al_IxHRY-VEHTlEHty0jr6hfRcRjM';
+      const res = await fetch(`https://api.telegram.org/bot${token}/getUpdates`);
+      const data = await res.json();
+      if (data.ok && data.result && data.result.length > 0) {
+        const lastUpdate = data.result[data.result.length - 1];
+        const cid = lastUpdate.message?.chat?.id || lastUpdate.channel_post?.chat?.id;
+        const nombre = lastUpdate.message?.chat?.first_name || lastUpdate.message?.chat?.title || 'Usuario';
+        if (cid) {
+          setBotConfig((prev) => ({ ...prev, telegram_chat_id: String(cid) }));
+          showToast(`¡Chat ID detectado con éxito: ${cid} (${nombre})!`);
+          return;
+        }
+      }
+      showToast('Aún no se detectan mensajes. Abre t.me/uleam_eventos_pagos_bot en Telegram, presiona Iniciar (/start) y vuelve a intentar.');
+    } catch {
+      showToast('Por favor escribe tu Chat ID manualmente o consúltalo en @userinfobot en Telegram.');
+    } finally {
+      setIsDetectingChatId(false);
+    }
   };
 
   // Utilidad para formatear bytes en unidades legibles (KB, MB)
@@ -1845,6 +2036,31 @@ export default function App() {
     }
   };
 
+  // Iniciar Sesión con Google OAuth mediante Supabase
+  const handleGoogleSignIn = () => {
+    setAuthLoading(true);
+    setGoogleLoading(true);
+    setAuthError(null);
+
+    // Timeout de seguridad: si el usuario retrocede o cancela, desbloquear botón
+    setTimeout(() => {
+      setAuthLoading(false);
+      setGoogleLoading(false);
+    }, 4500);
+
+    const supabaseUrl = (import.meta.env.VITE_SUPABASE_URL || 'https://xoqzmiqdsgtxlhhpandb.supabase.co').replace(/\/+$/, '');
+    const redirectUrl = window.location.origin;
+
+    try {
+      const authUrl = `${supabaseUrl}/auth/v1/authorize?provider=google&redirect_to=${encodeURIComponent(redirectUrl)}`;
+      window.location.href = authUrl;
+    } catch (err) {
+      setAuthError('No fue posible conectar con el servicio de autenticación de Google: ' + err.message);
+      setAuthLoading(false);
+      setGoogleLoading(false);
+    }
+  };
+
   const handleLogout = () => {
     localStorage.removeItem('uleam_jwt_token');
     localStorage.removeItem('uleam_session_user');
@@ -1969,7 +2185,11 @@ export default function App() {
               navigateTo('explorar', '/explorar');
             }}
           >
-            <div className="brand-circle">U</div>
+            <img
+              src="/logo-uleam.png"
+              alt="Logo ULEAM"
+              style={{ height: '36px', width: 'auto', objectFit: 'contain', marginRight: '6px' }}
+            />
             <div className="brand-title">
               ULEAM <span>EVENTOS</span>
             </div>
@@ -2213,9 +2433,11 @@ export default function App() {
               setMobileMenuOpen(false);
             }}
           >
-            <div className="brand-circle" style={{ width: '38px', height: '38px', fontSize: '1rem' }}>
-              U
-            </div>
+            <img
+              src="/logo-uleam.png"
+              alt="Logo ULEAM"
+              style={{ height: '34px', width: 'auto', objectFit: 'contain', marginRight: '6px' }}
+            />
             <div className="brand-title" style={{ fontSize: '1.1rem' }}>
               ULEAM <span>EVENTOS</span>
             </div>
@@ -2728,11 +2950,11 @@ export default function App() {
                   </p>
                   <div style={{ marginTop: '10px' }}>
                     <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.75rem', fontWeight: 600, color: '#B26A00', marginBottom: '4px' }}>
-                      <span>Tiempo restante</span>
-                      <span>20.0 horas</span>
+                      <span>Plazo reglamentario SLA Finanzas</span>
+                      <span>24.0 horas continuas</span>
                     </div>
                     <div style={{ width: '100%', height: '6px', background: 'rgba(178, 106, 0, 0.2)', borderRadius: '3px', overflow: 'hidden' }}>
-                      <div style={{ width: '83%', height: '100%', background: '#F9A825' }}></div>
+                      <div style={{ width: '100%', height: '100%', background: '#F9A825' }}></div>
                     </div>
                   </div>
                 </div>
@@ -2871,180 +3093,109 @@ export default function App() {
             </div>
           </div>
 
-          {/* DIPLOMA ACADÉMICO VISUAL (Visualización Fidedigna A4) */}
+          {/* TARJETA DE ACREDITACIÓN Y VISTA PREVIA EXCLUSIVA DEL CERTIFICADO (A4) */}
           <div
-            className="diploma-card-container"
-            style={{ cursor: 'pointer', position: 'relative' }}
-            onClick={() => setShowCertPreviewModal(true)}
-            title="Haz clic para abrir la vista previa oficial a pantalla completa"
+            style={{
+              background: '#FFFFFF',
+              borderRadius: 'var(--radius-xl)',
+              border: '1.5px solid rgba(0, 47, 108, 0.12)',
+              boxShadow: 'var(--shadow-level-2)',
+              overflow: 'hidden',
+              maxWidth: '860px',
+              margin: '0 auto',
+            }}
           >
-            <div
-              style={{
-                position: 'absolute',
-                top: '12px',
-                right: '12px',
-                background: 'rgba(0, 47, 108, 0.08)',
-                color: '#002F6C',
-                padding: '4px 10px',
-                borderRadius: 'var(--radius-full)',
-                fontSize: '0.72rem',
-                fontWeight: 600,
-                display: 'flex',
-                alignItems: 'center',
-                gap: '4px',
-              }}
-            >
-              <span className="material-symbols-outlined" style={{ fontSize: '15px' }}>zoom_in</span>
-              Ampliar / Vista Previa
+            <div style={{ background: 'linear-gradient(135deg, #002F6C, #001A3D)', color: '#FFFFFF', padding: '24px 28px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '14px' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '14px' }}>
+                <div style={{ width: '48px', height: '48px', borderRadius: '12px', background: 'rgba(255, 255, 255, 0.12)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#C59B27' }}>
+                  <span className="material-symbols-outlined" style={{ fontSize: '30px' }}>workspace_premium</span>
+                </div>
+                <div>
+                  <span style={{ fontSize: '0.75rem', letterSpacing: '1.5px', textTransform: 'uppercase', color: '#C59B27', fontWeight: 700 }}>
+                    Certificación Académica Oficial
+                  </span>
+                  <h3 style={{ fontSize: '1.25rem', color: '#FFFFFF', margin: '2px 0 0', fontWeight: 800 }}>
+                    Seminario de Ética Profesional en la Era de la IA
+                  </h3>
+                </div>
+              </div>
+              <span className="chip chip-success" style={{ background: 'rgba(0, 200, 83, 0.2)', color: '#A7F3D0', borderColor: 'rgba(0, 200, 83, 0.4)' }}>
+                ● Aprobado y Vigente
+              </span>
             </div>
 
-            {/* Encabezado República y Universidad */}
-            <div style={{ fontSize: '0.85rem', fontWeight: 700, letterSpacing: '3px', color: '#666666', marginBottom: '6px' }}>
-              REPÚBLICA DEL ECUADOR
-            </div>
-            <h1 style={{ fontFamily: 'Georgia, serif', fontSize: 'clamp(1.3rem, 3.5vw, 2rem)', color: '#002F6C', fontWeight: 800, margin: '4px 0', lineHeight: 1.25 }}>
-              UNIVERSIDAD LAICA ELOY ALFARO DE MANABÍ
-            </h1>
-            <div style={{ fontSize: '1.05rem', fontWeight: 700, color: '#C59B27', letterSpacing: '1px' }}>
-              FACULTAD DE CIENCIAS DE LA VIDA Y TECNOLOGÍAS
-            </div>
-
-            {/* Separador Ornamental */}
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '12px', margin: '16px auto 12px', maxWidth: '400px' }}>
-              <div style={{ flex: 1, height: '1.5px', background: '#C59B27' }}></div>
-              <span className="material-symbols-outlined" style={{ color: '#002F6C', fontSize: '20px' }}>school</span>
-              <div style={{ flex: 1, height: '1.5px', background: '#C59B27' }}></div>
-            </div>
-
-            <p style={{ fontStyle: 'italic', color: '#555555', fontSize: '1.05rem', margin: '8px 0' }}>
-              El Honorable Consejo Directivo y el Decanato de Facultad otorgan el presente:
-            </p>
-
-            {/* Título de Certificado */}
-            <div style={{ fontFamily: 'Georgia, serif', fontSize: 'clamp(1.8rem, 5vw, 2.8rem)', fontWeight: 900, color: '#002F6C', letterSpacing: '2px', margin: '10px 0 4px' }}>
-              CERTIFICADO
-            </div>
-            <div style={{ fontSize: '0.85rem', fontWeight: 700, letterSpacing: '4px', color: '#888888', marginBottom: '18px' }}>
-              DE ASISTENCIA Y APROBACIÓN ACADÉMICA
-            </div>
-
-            <div style={{ fontSize: '0.95rem', color: '#666666' }}>Conferido con honores a:</div>
-
-            {/* Nombre del Participante */}
-            <div
-              style={{
-                fontFamily: 'Georgia, serif',
-                fontSize: 'clamp(1.4rem, 4vw, 2.4rem)',
-                fontWeight: 800,
-                color: '#C59B27',
-                margin: '8px auto 4px',
-                borderBottom: '2px solid rgba(197, 155, 39, 0.4)',
-                display: 'inline-block',
-                paddingBottom: '4px',
-                wordBreak: 'break-word',
-                maxWidth: '100%',
-              }}
-            >
-              Karla Jamileth Andrade Mendoza
-            </div>
-            <div style={{ fontSize: '0.9rem', color: '#555555', marginBottom: '16px' }}>
-              Cédula de Identidad: <strong>1317890123</strong>
-            </div>
-
-            {/* Texto Académico de Respaldo */}
-            <p style={{ fontSize: '1.05rem', color: '#333333', maxWidth: '780px', margin: '0 auto 14px', lineHeight: '1.6' }}>
-              Por haber acreditado la asistencia reglamentaria y aprobación satisfactoria de las jornadas académicas del{' '}
-              <strong style={{ color: '#002F6C' }}>"Seminario de Ética Profesional en la Era de la IA"</strong>, llevado a cabo del 12 al 15 de Septiembre de 2026, con una carga curricular de{' '}
-              <strong style={{ color: '#00875A' }}>40 Horas Académicas</strong> debidamente avaladas por las autoridades universitarias.
-            </p>
-
-            <div style={{ fontSize: '0.9rem', color: '#666666', marginBottom: 'clamp(16px, 3vw, 28px)' }}>
-              Manta, Manabí — República del Ecuador, 12 de Septiembre de 2026.
-            </div>
-
-            {/* Fila Inferior: Bloque Criptográfico + Firmas Oficiales */}
-            <div className="diploma-footer-grid">
-
-              {/* Caja Criptográfica y QR */}
-              <div className="diploma-qr-col" style={{ display: 'flex', alignItems: 'center', gap: '12px', textAlign: 'left', background: '#FFFFFF', padding: '10px', borderRadius: '8px', border: '1px solid #E2E8F0' }}>
-                <img
-                  src="https://api.qrserver.com/v1/create-qr-code/?size=90x90&data=https://eventos.uleam.edu.ec/validar?code=ULEAM-2026-ETICA-884920"
-                  alt="QR Validación"
-                  style={{ width: '65px', height: '65px', display: 'block', flexShrink: 0 }}
-                />
-                <div style={{ fontSize: '0.68rem', fontFamily: 'monospace', color: '#555555' }}>
-                  <div style={{ fontWeight: 700, color: '#002F6C', marginBottom: '2px' }}>VALIDACIÓN OFICIAL</div>
-                  <div>CÓD: ULEAM-2026-ETICA</div>
-                  <div>HASH: SHA256: 8f9b4c...</div>
-                  <div style={{ color: 'var(--color-success)', marginTop: '2px' }}>● Válido y Vigente</div>
+            <div style={{ padding: '28px' }}>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '16px', marginBottom: '24px', background: 'var(--surface-bg)', padding: '18px', borderRadius: 'var(--radius-lg)' }}>
+                <div>
+                  <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)', display: 'block', textTransform: 'uppercase', fontWeight: 600 }}>Participante:</span>
+                  <strong style={{ fontSize: '1rem', color: 'var(--primary-dark)' }}>
+                    {currentUser ? `${currentUser.nombres} ${currentUser.apellidos}` : 'Karla Jamileth Andrade Mendoza'}
+                  </strong>
+                </div>
+                <div>
+                  <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)', display: 'block', textTransform: 'uppercase', fontWeight: 600 }}>Cédula / Identificación:</span>
+                  <strong style={{ fontSize: '1rem', color: 'var(--primary-dark)' }}>
+                    {currentUser?.identificacion || '1317890123'}
+                  </strong>
+                </div>
+                <div>
+                  <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)', display: 'block', textTransform: 'uppercase', fontWeight: 600 }}>Carga Curricular:</span>
+                  <strong style={{ fontSize: '1rem', color: '#00875A' }}>
+                    40 Horas Académicas
+                  </strong>
+                </div>
+                <div>
+                  <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)', display: 'block', textTransform: 'uppercase', fontWeight: 600 }}>Código Criptográfico:</span>
+                  <strong style={{ fontSize: '0.88rem', color: 'var(--primary-container)', fontFamily: 'monospace' }}>
+                    ULEAM-2026-ETICA-884920
+                  </strong>
                 </div>
               </div>
 
-              {/* Sello Oficial y Firma 1: Autoridad SuperAdmin (Dinámica) */}
-              <div style={{ textAlign: 'center', position: 'relative' }}>
-                {/* Sello de la Universidad */}
-                {authorityConfig.selloActivo !== false && (
-                  <div
-                    style={{
-                      position: 'absolute',
-                      top: 'clamp(-45px, -6vw, -60px)',
-                      left: '50%',
-                      transform: 'translateX(-50%)',
-                      width: '64px',
-                      height: '64px',
-                      borderRadius: '50%',
-                      border: '2.5px solid #8B0000',
-                      outline: '1.5px dashed #C59B27',
-                      color: '#8B0000',
-                      display: 'flex',
-                      flexDirection: 'column',
-                      alignItems: 'center',
-                      justifyContent: 'center',
-                      fontSize: '0.45rem',
-                      fontWeight: 800,
-                      opacity: 0.85,
-                      pointerEvents: 'none',
-                      lineHeight: '1.1',
-                      background: 'rgba(255, 255, 255, 0.75)',
-                    }}
-                  >
-                    <span>ULEAM OFICIAL</span>
-                    <strong style={{ fontSize: '0.6rem', color: '#002F6C' }}>RECTORADO</strong>
-                    <span>ECUADOR</span>
-                  </div>
-                )}
-
-                {/* Firma Digital Incorporada (Subida o Dibujada) */}
-                <div style={{ height: '55px', display: 'flex', alignItems: 'flex-end', justifyContent: 'center', marginBottom: '4px' }}>
-                  {authorityConfig.firmaUrl ? (
-                    <img
-                      src={authorityConfig.firmaUrl}
-                      alt="Firma Autoridad"
-                      style={{ maxHeight: '55px', maxWidth: '180px', objectFit: 'contain' }}
-                    />
-                  ) : (
-                    <div style={{ fontFamily: 'Brush Script MT, cursive', fontSize: '1.8rem', color: '#002F6C' }}>
-                      M. Zambrano Z.
-                    </div>
-                  )}
-                </div>
-                <div style={{ width: '85%', height: '1.5px', background: '#002F6C', margin: '0 auto 6px' }}></div>
-                <strong style={{ fontSize: '0.85rem', color: '#002F6C', display: 'block' }}>{authorityConfig.nombre}</strong>
-                <span style={{ fontSize: '0.72rem', color: '#C59B27', fontWeight: 600, display: 'block' }}>{authorityConfig.cargo}</span>
-                <span style={{ fontSize: '0.65rem', color: '#777777', display: 'block' }}>{authorityConfig.resolucion}</span>
+              {/* Botón principal para abrir la vista previa exclusiva */}
+              <div style={{ textAlign: 'center', marginBottom: '20px' }}>
+                <button
+                  className="btn btn-primary"
+                  style={{
+                    background: 'linear-gradient(135deg, #002F6C, #004080)',
+                    padding: '14px 28px',
+                    fontSize: '1rem',
+                    fontWeight: 700,
+                    width: '100%',
+                    maxWidth: '460px',
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    gap: '10px',
+                    borderRadius: 'var(--radius-lg)',
+                    boxShadow: '0 8px 24px rgba(0, 47, 108, 0.25)',
+                  }}
+                  onClick={() => setShowCertPreviewModal(true)}
+                >
+                  <span className="material-symbols-outlined" style={{ fontSize: '24px', color: '#C59B27' }}>fullscreen</span>
+                  Ver Vista Previa del Certificado (A4)
+                </button>
+                <span style={{ display: 'block', fontSize: '0.78rem', color: 'var(--text-muted)', marginTop: '8px' }}>
+                  Abre la vista previa a pantalla completa optimizada para visualización o impresión sin deformación.
+                </span>
               </div>
 
-              {/* Firma 2: Coordinación Académica */}
-              <div style={{ textAlign: 'center' }}>
-                <div style={{ height: '55px', display: 'flex', alignItems: 'flex-end', justifyContent: 'center', marginBottom: '4px' }}>
-                  <div style={{ fontFamily: 'Brush Script MT, cursive', fontSize: '1.8rem', color: '#002F6C' }}>
-                    Jonny Pérez Véliz
-                  </div>
-                </div>
-                <div style={{ width: '85%', height: '1.5px', background: '#002F6C', margin: '0 auto 6px' }}></div>
-                <strong style={{ fontSize: '0.85rem', color: '#002F6C', display: 'block' }}>Dr. Jonny Pérez Véliz, PhD.</strong>
-                <span style={{ fontSize: '0.72rem', color: '#555555', fontWeight: 600, display: 'block' }}>Director Académico del Evento</span>
-                <span style={{ fontSize: '0.65rem', color: '#777777', display: 'block' }}>Facultad Cs. de la Vida y Tecnologías</span>
+              <div style={{ display: 'flex', gap: '10px', justifyContent: 'center', flexWrap: 'wrap', borderTop: '1px solid #E2E8F0', paddingTop: '18px' }}>
+                <button className="btn btn-outline btn-sm" onClick={handleDownloadCertPDF}>
+                  <span className="material-symbols-outlined">download</span> Descargar (.PDF)
+                </button>
+                <button className="btn btn-outline btn-sm" onClick={handlePrintCert}>
+                  <span className="material-symbols-outlined">print</span> Imprimir
+                </button>
+                <button
+                  className="btn btn-outline btn-sm"
+                  onClick={() => {
+                    setValidationCodeInput('ULEAM-2026-ETICA-884920');
+                    setShowCertificateValidatorModal(true);
+                  }}
+                >
+                  <span className="material-symbols-outlined">verified_user</span> Validar Código
+                </button>
               </div>
             </div>
           </div>
@@ -4575,19 +4726,43 @@ export default function App() {
             </div>
 
             <form onSubmit={handleSaveBotConfig}>
+              {/* Tarjeta de enlace directo al Bot de Telegram */}
+              <div style={{ background: '#F0F9FF', border: '1px solid #BAE6FD', borderRadius: 'var(--radius-md)', padding: '12px 14px', marginBottom: '16px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '8px' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  <span className="material-symbols-outlined" style={{ color: '#0284C7', fontSize: '22px' }}>send</span>
+                  <div>
+                    <strong style={{ fontSize: '0.85rem', color: '#0369A1', display: 'block' }}>Bot Oficial de Pagos ULEAM:</strong>
+                    <a href="https://t.me/uleam_eventos_pagos_bot" target="_blank" rel="noopener noreferrer" style={{ fontSize: '0.82rem', color: '#0284C7', textDecoration: 'underline', fontWeight: 700 }}>
+                      t.me/uleam_eventos_pagos_bot ↗
+                    </a>
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  className="btn btn-outline btn-sm"
+                  style={{ borderColor: '#0284C7', color: '#0284C7', background: '#FFFFFF', padding: '5px 12px', fontSize: '0.78rem', display: 'flex', alignItems: 'center', gap: '4px' }}
+                  onClick={handleDetectTelegramChatId}
+                  disabled={isDetectingChatId}
+                  title="Detectar automáticamente el Chat ID tras pulsar /start"
+                >
+                  <span className="material-symbols-outlined" style={{ fontSize: '16px' }}>sync</span>
+                  {isDetectingChatId ? 'Detectando...' : 'Detectar Chat ID'}
+                </button>
+              </div>
+
               <div style={{ marginBottom: '16px' }}>
                 <label style={{ display: 'block', fontSize: '0.82rem', fontWeight: 600, color: 'var(--primary-dark)', marginBottom: '6px' }}>
                   Telegram Bot Token:
                 </label>
                 <input
                   type="text"
-                  placeholder="Ej: 7123456789:AAFlq... (de @BotFather)"
+                  placeholder="Ej: 9190712678:AAFZQ9Al_IxHRY... (de @BotFather)"
                   value={botConfig.telegram_bot_token || ''}
                   onChange={(e) => setBotConfig({ ...botConfig, telegram_bot_token: e.target.value })}
                   style={{ width: '100%', padding: '10px 14px', borderRadius: 'var(--radius-md)', border: '1px solid #CBD5E1', fontSize: '0.88rem' }}
                 />
                 <span style={{ fontSize: '0.74rem', color: 'var(--text-muted)', display: 'block', marginTop: '4px' }}>
-                  Token provisto por BotFather en Telegram para despachar mensajes HTTP directos.
+                  Token HTTP API del Bot provisto por @BotFather para enviar alertas persistentes a Finanzas.
                 </span>
               </div>
 
@@ -4597,13 +4772,13 @@ export default function App() {
                 </label>
                 <input
                   type="text"
-                  placeholder="Ej: -1001234567890 o ID de usuario"
+                  placeholder="Ej: 131890123 o -1001234567890"
                   value={botConfig.telegram_chat_id || ''}
                   onChange={(e) => setBotConfig({ ...botConfig, telegram_chat_id: e.target.value })}
                   style={{ width: '100%', padding: '10px 14px', borderRadius: 'var(--radius-md)', border: '1px solid #CBD5E1', fontSize: '0.88rem' }}
                 />
                 <span style={{ fontSize: '0.74rem', color: 'var(--text-muted)', display: 'block', marginTop: '4px' }}>
-                  Identificador del chat grupal o privado del encargado de validar pagos.
+                  1. Abre el bot y dale a <strong>Iniciar (/start)</strong>. 2. Presiona <strong>Detectar Chat ID</strong> o consúltalo en <strong>@userinfobot</strong>.
                 </span>
               </div>
 
@@ -5364,48 +5539,91 @@ export default function App() {
                     <button className="btn btn-outline" onClick={() => setRegisterStep(1)}>
                       Atrás
                     </button>
-                    <button className="btn btn-primary" style={{ flex: 1 }} onClick={() => setRegisterStep(3)}>
+                    <button className="btn btn-primary" style={{ flex: 1 }} onClick={handleProceedToStep3}>
                       Continuar a Confirmación / Pago
                     </button>
                   </div>
                 </div>
               )}
 
-              {/* Paso 3: Pago y Plazo de 24 Horas */}
+              {/* Paso 3: Pago y Plazo de 24 Horas con Código de Pago Único */}
               {registerStep === 3 && (
                 <div>
                   <h4 style={{ marginBottom: '16px' }}>3. Resumen y Emisión de Acreditación:</h4>
-                  <div style={{ background: 'var(--surface-bg)', padding: '16px', borderRadius: 'var(--radius-lg)', marginBottom: '20px' }}>
-                    <p><strong>Categoría:</strong> {registrationForm.categoria_nombre}</p>
-                    <p><strong>Total a Pagar:</strong> ${registrationForm.categoria_precio.toFixed(2)} USD</p>
+                  <div style={{ background: 'var(--surface-bg)', padding: '16px', borderRadius: 'var(--radius-lg)', marginBottom: '18px' }}>
+                    <p style={{ margin: '0 0 6px' }}><strong>Evento:</strong> {selectedEvent.nombre}</p>
+                    <p style={{ margin: '0 0 6px' }}><strong>Participante:</strong> {registrationForm.nombres} {registrationForm.apellidos} (C.I: {registrationForm.identificacion})</p>
+                    <p style={{ margin: '0 0 6px' }}><strong>Categoría:</strong> {registrationForm.categoria_nombre}</p>
+                    <p style={{ margin: 0 }}><strong>Total a Pagar:</strong> <span style={{ color: 'var(--primary-container)', fontSize: '1.1rem', fontWeight: 800 }}>${registrationForm.categoria_precio.toFixed(2)} USD</span></p>
                   </div>
 
                   {registrationForm.categoria_precio > 0 ? (
                     <div style={{ marginBottom: '24px' }}>
+                      {/* Recuadro Destacado de Código Único de Pago */}
+                      <div style={{ background: '#F8FAFC', border: '2px dashed var(--primary-container)', borderRadius: 'var(--radius-lg)', padding: '16px', marginBottom: '16px' }}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
+                          <span style={{ fontSize: '0.8rem', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase' }}>
+                            Código de Pago Único Asignado:
+                          </span>
+                          <button
+                            type="button"
+                            className="btn btn-outline btn-sm"
+                            style={{ padding: '2px 8px', fontSize: '0.75rem', display: 'flex', alignItems: 'center', gap: '4px' }}
+                            onClick={() => {
+                              navigator.clipboard.writeText(registrationForm.codigo_pago);
+                              showToast('Código de pago copiado al portapapeles');
+                            }}
+                          >
+                            <span className="material-symbols-outlined" style={{ fontSize: '14px' }}>content_copy</span> Copiar
+                          </button>
+                        </div>
+                        <div style={{ fontSize: '1.3rem', fontWeight: 900, color: 'var(--primary-dark)', letterSpacing: '1.5px', fontFamily: 'monospace' }}>
+                          {registrationForm.codigo_pago}
+                        </div>
+                        <div style={{ marginTop: '10px', fontSize: '0.8rem', color: '#334155', lineHeight: 1.5, borderTop: '1px solid #E2E8F0', paddingTop: '8px' }}>
+                          <div><strong>Banco:</strong> Banco Pichincha (Cuenta Corriente ULEAM)</div>
+                          <div><strong>Cuenta Corriente #:</strong> 2100123456</div>
+                          <div><strong>Beneficiario:</strong> Universidad Laica Eloy Alfaro de Manabí (RUC: 1360000980001)</div>
+                          <div style={{ color: 'var(--primary-container)', fontWeight: 700, marginTop: '4px' }}>
+                            ⚠️ Importante: Coloca el código {registrationForm.codigo_pago} en el concepto o referencia de tu depósito o transferencia.
+                          </div>
+                        </div>
+                      </div>
+
                       {/* Banner de Política SLA de 24 Horas */}
                       <div style={{ background: 'var(--surface-container)', padding: '14px 16px', borderRadius: 'var(--radius-lg)', borderLeft: '4px solid var(--primary-container)', marginBottom: '16px' }}>
                         <div style={{ display: 'flex', alignItems: 'center', gap: '8px', color: 'var(--primary-container)', fontWeight: 700, fontSize: '0.88rem', marginBottom: '4px' }}>
                           <span className="material-symbols-outlined" style={{ fontSize: '20px' }}>schedule</span>
-                          <span>Plazo de Revisión: 24 Horas</span>
+                          <span>Ventana de Validación SLA: 24 Horas Reglamentarias</span>
                         </div>
-                        <p style={{ fontSize: '0.82rem', color: 'var(--text-secondary)', lineHeight: 1.4 }}>
-                          Al cargar tu transferencia, tu inscripción pasará al estado <strong>EN REVISIÓN</strong>. El equipo administrativo de la ULEAM cuenta con una ventana máxima de 24 horas para verificar el pago y liberar tu credencial QR. Durante este tiempo tu cupo está completamente reservado.
+                        <p style={{ fontSize: '0.82rem', color: 'var(--text-secondary)', lineHeight: 1.4, margin: 0 }}>
+                          Al cargar tu comprobante, tu registro pasará al estado <strong>Pago en verificación</strong>. El personal de Finanzas cuenta con un plazo reglamentario de 24 horas continuas para validar tu depósito y liberar tu credencial QR de acceso. Durante este lapso tu cupo queda 100% reservado.
                         </p>
                       </div>
 
                       <label style={{ fontSize: '0.85rem', fontWeight: 600, display: 'block', marginBottom: '8px' }}>
                         Adjuntar Comprobante de Transferencia / Depósito:
                       </label>
-                      <input type="file" className="input-control" style={{ background: '#FFFFFF' }} />
+                      <input
+                        type="file"
+                        className="input-control"
+                        style={{ background: '#FFFFFF' }}
+                        onChange={(e) => {
+                          if (e.target.files && e.target.files[0]) {
+                            setRegistrationForm({ ...registrationForm, comprobante_archivo: e.target.files[0].name });
+                            showToast(`Archivo seleccionado: ${e.target.files[0].name}`);
+                          }
+                        }}
+                      />
                       <small style={{ color: 'var(--text-muted)', display: 'block', marginTop: '6px' }}>
                         Formatos válidos: PDF, JPG, PNG (Máx 5MB)
                       </small>
                     </div>
                   ) : (
-                    <div style={{ padding: '14px', background: 'var(--color-success-bg)', borderRadius: 'var(--radius-sm)', marginBottom: '20px' }}>
-                      <p style={{ color: 'var(--color-success)', fontSize: '0.9rem', fontWeight: 600 }}>
+                    <div style={{ padding: '16px', background: 'var(--color-success-bg)', borderRadius: 'var(--radius-sm)', marginBottom: '20px' }}>
+                      <p style={{ color: 'var(--color-success)', fontSize: '0.9rem', fontWeight: 600, margin: 0 }}>
                         <span className="material-symbols-outlined" style={{ verticalAlign: 'middle', marginRight: '6px', fontSize: '18px' }}>verified</span>
-                        Inscripción Gratuita Institucional: tu credencial QR será generada automáticamente.
+                        Inscripción Gratuita Institucional: tu credencial QR de acceso será generada y liberada inmediatamente.
                       </p>
                     </div>
                   )}
@@ -5415,7 +5633,7 @@ export default function App() {
                       Atrás
                     </button>
                     <button className="btn btn-urgent" style={{ flex: 1 }} onClick={handleConfirmRegistration}>
-                      Finalizar e Imprimir Credencial
+                      {registrationForm.categoria_precio > 0 ? 'Confirmar Registro y Enviar a Auditoría (SLA 24h)' : 'Finalizar y Obtener Credencial QR'}
                     </button>
                   </div>
                 </div>
@@ -5736,7 +5954,45 @@ export default function App() {
                     </div>
                   </div>
 
-                  
+                  <div style={{ margin: '18px 0 14px', display: 'flex', alignItems: 'center', gap: '10px' }}>
+                    <div style={{ flex: 1, height: '1px', background: '#E2E8F0' }}></div>
+                    <span style={{ fontSize: '0.74rem', color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+                      O continúa con
+                    </span>
+                    <div style={{ flex: 1, height: '1px', background: '#E2E8F0' }}></div>
+                  </div>
+
+                  <button
+                    type="button"
+                    onClick={handleGoogleSignIn}
+                    className="btn btn-outline"
+                    disabled={authLoading}
+                    style={{
+                      width: '100%',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      gap: '10px',
+                      padding: '10px 16px',
+                      border: '1px solid #CBD5E1',
+                      borderRadius: 'var(--radius-md)',
+                      background: '#FFFFFF',
+                      fontWeight: 600,
+                      fontSize: '0.88rem',
+                      color: '#1E293B',
+                      boxShadow: '0 1px 2px rgba(0,0,0,0.05)',
+                      marginBottom: '18px',
+                      cursor: 'pointer',
+                    }}
+                  >
+                    <svg width="18" height="18" viewBox="0 0 24 24">
+                      <path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" />
+                      <path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" />
+                      <path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.06H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.94l2.85-2.22.81-.63z" />
+                      <path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.06l3.66 2.84c.87-2.6 3.3-4.52 6.16-4.52z" />
+                    </svg>
+                    Continuar con Google
+                  </button>
 
                   <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '10px' }}>
                     <button
@@ -5885,6 +6141,46 @@ export default function App() {
                       </button>
                     </div>
                   </div>
+
+                  <div style={{ margin: '18px 0 14px', display: 'flex', alignItems: 'center', gap: '10px' }}>
+                    <div style={{ flex: 1, height: '1px', background: '#E2E8F0' }}></div>
+                    <span style={{ fontSize: '0.74rem', color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+                      O continúa con
+                    </span>
+                    <div style={{ flex: 1, height: '1px', background: '#E2E8F0' }}></div>
+                  </div>
+
+                  <button
+                    type="button"
+                    onClick={handleGoogleSignIn}
+                    className="btn btn-outline"
+                    disabled={authLoading}
+                    style={{
+                      width: '100%',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      gap: '10px',
+                      padding: '10px 16px',
+                      border: '1px solid #CBD5E1',
+                      borderRadius: 'var(--radius-md)',
+                      background: '#FFFFFF',
+                      fontWeight: 600,
+                      fontSize: '0.88rem',
+                      color: '#1E293B',
+                      boxShadow: '0 1px 2px rgba(0,0,0,0.05)',
+                      marginBottom: '18px',
+                      cursor: 'pointer',
+                    }}
+                  >
+                    <svg width="18" height="18" viewBox="0 0 24 24">
+                      <path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" />
+                      <path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" />
+                      <path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.06H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.94l2.85-2.22.81-.63z" />
+                      <path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.06l3.66 2.84c.87-2.6 3.3-4.52 6.16-4.52z" />
+                    </svg>
+                    Continuar con Google
+                  </button>
 
                   <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '10px' }}>
                     <button
@@ -6932,7 +7228,11 @@ export default function App() {
                   navigateTo('explorar', '/explorar');
                 }}
               >
-                <div className="brand-circle" style={{ background: '#FFFFFF', color: 'var(--primary-container)' }}>U</div>
+                <img
+                  src="/logo-uleam.png"
+                  alt="Logo ULEAM"
+                  style={{ height: '36px', width: 'auto', objectFit: 'contain', marginRight: '6px', filter: 'brightness(0) invert(1)' }}
+                />
                 <div className="brand-title" style={{ color: '#FFFFFF' }}>
                   ULEAM <span style={{ color: '#FFA4A4' }}>EVENTOS</span>
                 </div>

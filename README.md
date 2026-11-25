@@ -1,10 +1,11 @@
-# Plataforma de Gestion de Congresos y Eventos Academicos (ULEAM-EVENTOS)
+# Plataforma de Gestion de Congresos y Eventos (ULEAM-EVENTOS)
 
-Sistema integral para la administracion, publicacion, inscripcion, auditoria financiera, control de acceso mediante codigo QR y certificacion oficial de congresos y seminarios academicos de la Universidad Laica Eloy Alfaro de Manabi (ULEAM).
+Sistema integral para la administracion, publicacion, inscripcion, control de acceso, gestion de pagos y certificacion de congresos y eventos academicos de la Universidad Laica Eloy Alfaro de Manabi (ULEAM).
 
-El proyecto esta disenado bajo una arquitectura desacoplada y orientada a servicios:
-- Backend: API REST desarrollada en C# (.NET 9 / ASP.NET Core Web API) con arquitectura limpia, autenticacion basada en tokens JWT, control de acceso basado en roles (RBAC) y persistencia dual (PostgreSQL / Supabase y repositorio autonomo en memoria para pruebas y desarrollo local).
-- Frontend: Aplicacion web SPA desarrollada en React 19 con Vite, componentes modulares, interfaz responsiva basada en los lineamientos institucionales ULEAM y soporte de escaneo QR multidispositivo en red local.
+El proyecto esta compuesto por:
+- **Backend**: API REST desarrollada en **C# (.NET 9 ASP.NET Core Web API)** con conexion a **PostgreSQL (Supabase)**, autenticacion hibrida (JWT y Google OAuth), servicio de alertas persistentes para revision de pagos mediante bot de Telegram, y arquitectura modular con soporte de fallback autonomo.
+- **Frontend**: Aplicacion web SPA desarrollada en **React 19** con **Vite**, lectura y generacion de codigos QR para control de asistencia, interfaz responsiva compatible con dispositivos moviles y soporte para navegacion segura HTTPS.
+- **Base de Datos y Almacenamiento**: Instancia de **Supabase (PostgreSQL 15+)** con triggers de auditoria, funciones PL/pgSQL y buckets de **Supabase Storage** para el resguardo de comprobantes de pago.
 
 ---
 
@@ -12,311 +13,227 @@ El proyecto esta disenado bajo una arquitectura desacoplada y orientada a servic
 
 ```text
 PlataformaCongresos/
-|-- backend/                     # API REST en C# (.NET 9 / ASP.NET Core)
-|   |-- Controllers/             # Controladores REST (Auth, Eventos, Inscripciones, Asistencia, etc.)
-|   |-- Models/                  # Entidades de dominio, modelos DTO y respuestas JSON normalizadas
-|   |-- Repositories/            # Contrato de persistencia e implementacion concurrente
-|   |-- Security/                # Modulo de criptografia, hashing PBKDF2 y servicio de tokens JWT
-|   |-- Configuration/           # Configuracion unificada y cargador de variables de entorno (.env)
-|   |-- Middleware/              # Interceptor y validacion de encabezados Bearer JWT
-|   |-- Program.cs               # Configuracion de Kestrel (puerto 8080), inyeccion de dependencias y CORS
-|   |-- appsettings.json         # Parametros de configuracion general
-|   `-- UleamEventos.Api.csproj  # Archivo de definicion del proyecto .NET 9
-|-- backend_go_legacy/           # Respaldo historico del prototipo inicial en Go (Golang)
-|-- frontend/                    # Interfaz de usuario en React 19 + Vite
-|   |-- src/                     # Componentes, vistas por rol, utilidades de exportacion y estilos
-|   |   |-- components/          # Vistas de busqueda, estados 404 y modales institucionales
-|   |   |-- utils/               # Generadores de PDF de credenciales y certificados oficiales
-|   |   |-- App.jsx              # Controlador principal de vistas, estados y navegacion SPA
-|   |   `-- App.css              # Sistema de diseno y componentes institucionales ULEAM
-|   |-- cert.pem / key.pem       # Certificados SSL locales para habilitar camara movil en red LAN
-|   |-- package.json             # Dependencias de React 19 y scripts de ejecucion
-|   `-- vite.config.js           # Configuracion del servidor Vite con proxy y soporte HTTPS
-|-- supabase/                    # Scripts SQL y migraciones de base de datos relacional
-|   `-- migrations/
-|       |-- 01_schema.sql        # Esquema relacional con 18 tablas, triggers y politicas RLS
-|       |-- 02_seed_data.sql     # Datos iniciales de roles, usuarios, congresos y categorias
-|       `-- 03_security_advisor_fixes.sql # Optimizaciones de seguridad y politicas RLS
-`-- README.md                    # Documentacion tecnica e instrucciones operativas
+├── backend/                             # API REST en C# (.NET 9)
+│   ├── Configuration/                   # Configuracion y carga de variables de entorno
+│   ├── Controllers/                     # Controladores de la API (Auth, Eventos, Inscripciones, etc.)
+│   ├── Data/                            # Factoria de conexion a PostgreSQL y scripts
+│   ├── Models/                          # Modelos de dominio, entidades y DTOs
+│   ├── Repositories/                    # Capa de persistencia (PostgreSQL y Fallback en memoria)
+│   ├── Services/                        # Servicios (JWT, Notificaciones Telegram de pagos)
+│   ├── .env.example                     # Plantilla de variables de entorno (sin credenciales)
+│   ├── Program.cs                       # Pipeline y configuracion de servicios ASP.NET Core
+│   └── UleamEventos.Api.csproj          # Archivo de proyecto y dependencias NuGet
+├── frontend/                            # Interfaz de usuario en React 19 + Vite
+│   ├── src/                             # Componentes modulares, vistas por rol y logica SPA
+│   ├── public/                          # Recursos publicos, logos institucionales y favicon
+│   ├── .env.example                     # Plantilla de variables de entorno frontend
+│   ├── package.json                     # Dependencias y scripts de Node.js
+│   └── vite.config.js                   # Configuracion de Vite y servidor de desarrollo
+├── supabase/                            # Scripts SQL y migraciones
+│   └── migrations/                      # Esquemas de tablas, funciones, enums y seed data
+└── README.md                            # Documentacion general del sistema
 ```
-
----
-
-## Arquitectura Tecnologica
-
-### 1. Backend (.NET 9 / ASP.NET Core Web API)
-- Capas de diseno:
-  - Controllers: Controladores HTTP que exponen la API bajo la ruta base `/api/v1`.
-  - Repositories: Capa de acceso a datos con sincronizacion concurrente mediante `ReaderWriterLockSlim` y compatibilidad con PostgreSQL / Supabase.
-  - Security: Generacion y validacion de tokens JWT (RFC 7519) con firma HMAC-SHA256 y hashing de contraseñas mediante PBKDF2 con salt criptografico y 100.000 iteraciones (compatible con hashes bcrypt previos).
-  - Middleware: Filtro de autenticacion que extrae el token Bearer del encabezado HTTP y propaga la identidad y los roles del usuario a traves del contexto de ejecucion.
-- Modo de operacion:
-  - Por defecto opera en modo autonomo con almacenamiento en memoria precargado con eventos, usuarios y credenciales iniciales.
-  - Si se configura la variable `DATABASE_URL` en `backend/.env`, se conecta directamente a la instancia PostgreSQL correspondiente.
-
-### 2. Frontend (React 19 + Vite)
-- Enrutamiento SPA dinámico: Mapeo limpio de URLs en el navegador (`/explorar`, `/mis-eventos`, `/certificados`, `/super-admin`, `/admin-eventos`, `/gestion-pagos`, `/checkin`) sin recarga de pagina.
-- Seguridad en interfaz: Eliminacion total de mensajes que revelen nombres de tablas, lenguajes o motores de base de datos a los usuarios finales.
-- Soporte multidispositivo: Diseno adaptable con soporte para pantallas de alta resolucion, tablets y dispositivos moviles.
-- Escaneo QR de camara en vivo:
-  - Selector de camaras fisicas mediante `navigator.mediaDevices.enumerateDevices` para elegir la webcam real y evitar dispositivos virtuales inactivos.
-  - Alternancia entre camara frontal y trasera en telefonos moviles.
-  - Zona de carga institucional de archivos (Dropzone) para procesar fotografias o capturas de credenciales QR.
-  - Sintetizador de audio Web Audio API para emitir tonos de confirmacion sonora (doble beep agudo para acceso autorizado y tono grave para acceso denegado).
-
----
-
-## Modulos del Sistema y Separacion de Roles
-
-### 1. Super Administrador (/super-admin - Rol: SUPER_ADMIN)
-- Control de Usuarios y Asignacion de Roles: Buscador en tiempo real y selector de roles con actualizacion inmediata de privilegios (SuperAdmin, Admin de Evento, Personal de Gestion, Personal de Asistencia, Asistente).
-- Firma Digital y Sellos Oficiales: Lienzo interactivo en pantalla para captura de firma manual, boton de carga de firma en formato PNG transparente y selector de sellos institucionales autorizados de Decanato y Rectoria.
-- Auditoria del Sistema: Registro de eventos criticos de seguridad (inicios de sesion, revision de pagos, escaneos QR en puerta y descargas de certificados) con direccion IP, marca de tiempo y resultado.
-
-### 2. Administrador de Eventos (/admin-eventos - Rol: ADMIN_EVENTO)
-- Gestion de Congresos: Formulario de creacion de eventos con titulo, fechas de inicio y fin, modalidad (Presencial, Virtual o Hibrido), aforo maximo, afiches promocionales y categorias de inscripcion con o sin costo.
-- Conmutador de Estado de Eventos: Transicion en vivo del ciclo de vida del congreso (Borrador, Publicado, Inscripciones Abiertas, Inscripciones Cerradas, En Curso, Finalizado y Archivado).
-- Control de Asistencia y Aforo: Metricas de participantes inscritos y exportacion de listados a formato Excel / CSV.
-
-### 3. Personal de Gestion y Finanzas (/gestion-pagos - Rol: PERSONAL_GESTION)
-- Mesa de Finanzas: Visualizacion de solicitudes de inscripcion que requieren comprobante de transferencia bancaria.
-- Control de Ventana SLA de 24 Horas: Contador de tiempo restante con clasificacion automatica del estado de atencion:
-  - A Tiempo: Mas de 4 horas disponibles para revision.
-  - Urgente: Menos de 4 horas para el cumplimiento del plazo de 24 horas.
-  - Vencido: Plazo de revision superado.
-- Acciones de Auditoria: Aprobacion de comprobante (con liberacion inmediata de credencial QR oficial) o rechazo con registro de observaciones.
-- Exportacion Financiera: Generacion de reportes consolidados en formato CSV estructurado con codificacion UTF-8 BOM.
-
-### 4. Personal de Asistencia y Control de Puerta (/checkin - Rol: PERSONAL_ASISTENCIA)
-- Validacion de Credencial QR: Escaneo optico en tiempo real desde la camara web de la computadora o la camara del dispositivo movil.
-- Deteccion de Duplicados: Advertencia visual y registro en caso de que una credencial ya haya sido registrada previamente en la sesion actual.
-- Control de Aforo en Sala: Contador dinamico de asistentes validados en sala y aforo pendiente de ingreso.
-- Zona de Carga de Archivos QR: Opcion alternativa para subir capturas de pantalla o fotos de credenciales directamente desde la galeria del telefono.
-- Simulacion de Pruebas: Botones integrados para probar la lectura de credenciales validas o denegadas sin requerir camara fisica.
-
-### 5. Portal del Asistente (/explorar, /mis-eventos, /certificados - Rol: ASISTENTE)
-- Catalogo de Eventos: Exploracion de la oferta academica institucional con filtros por modalidad y busqueda en tiempo real.
-- Inscripcion en Linea: Registro en categorias gratuitas (con generacion automatica de carnet) o aranceladas (con carga de comprobante bancario).
-- Credencial Digital Oficial: Carnet digital con codigo QR de seguridad firmado, datos del titular, categoria y sello institucional.
-- Descarga en PDF: Generacion y descarga directa del documento de credencial oficial en formato PDF.
-- Validacion Publica de Certificados: Formulario publico para consultar la autenticidad de un certificado emitido mediante su codigo alfanumerico.
-
-### 6. Soporte Institucional (Mesa de Soporte)
-- Formulario de contacto tecnico y seleccion de categoria de atencion (Pagos y Comprobantes, Certificados Digitales, Credencial QR, Acceso de Cuenta o Consulta General).
-- Seccion de Preguntas Frecuentes (FAQ) institucionales.
 
 ---
 
 ## Requisitos Previos
 
-1. .NET SDK: Version 9.0 o superior instalada en el sistema operativo.
-   - Verificacion: `dotnet --version`
-2. Node.js: Version 18.x o 20.x o superior con gestor de paquetes npm.
-   - Verificacion: `node -v` y `npm -v`
-3. Git: Para control de versiones y clonacion del repositorio.
-4. Navegador web moderno: Google Chrome, Microsoft Edge, Mozilla Firefox o Safari con soporte para WebRTC y Web Audio API.
+Asegurate de contar con las siguientes herramientas instaladas:
+
+1. **.NET SDK 9.0**: Requerido para compilar y ejecutar el backend.
+   - Verificar con: `dotnet --version`
+2. **Node.js**: Version **18.x** o **20.x+** y gestor de paquetes **npm**.
+   - Verificar con: `node -v` y `npm -v`
+3. **Git**: Para el control de versiones.
+4. *(Opcional)* Cuenta en **Supabase** para base de datos PostgreSQL y almacenamiento de comprobantes en la nube.
 
 ---
 
-## Guia de Ejecucion
+## Modulos y Funcionalidades Principales
 
-Para ejecutar la plataforma completa en tu entorno local se deben iniciar ambos servicios (Backend y Frontend). Se recomienda abrir dos terminales independientes.
+### 1. Autenticacion Hibrida y Google OAuth
+- Inicio de sesion y registro con credenciales locales (correo y contrasena hasheada con BCrypt).
+- **Inicio de Sesion con Google**: Integracion fluida mediante Supabase Auth como intermediario OAuth 2.0 y sincronizacion automatica con el backend en `POST /api/v1/auth/google`.
+- Emision y validacion de tokens de acceso **JWT** con roles de usuario (`SuperAdmin`, `Organizador`, `Revisor`, `Gestion`, `Asistencia`, `Asistente`).
 
-### 1. Iniciar el Backend en C# (.NET 9)
+### 2. Flujo de Inscripciones y Validacion de Pagos
+- Registro de participantes en eventos y congresos con seleccion de modalidad (Estudiante, Profesional, Ponente).
+- Ciclo de estados de pago:
+  - **No pagado**: Inscripcion creada a la espera del comprobante de transferencia o deposito.
+  - **Pago en verificacion**: El participante sube el comprobante digital (imagen o PDF), el cual se almacena en el bucket `comprobantes-pago` de Supabase.
+  - **Pagado**: El personal de gestion valida el deposito y aprueba el pago, habilitando la credencial QR del participante.
+  - **Rechazado**: El personal notifica motivos de inconsistencia en el deposito.
+- **Notificaciones Persistentes via Bot de Telegram**: El backend incluye un servicio en segundo plano (`PaymentNotificationService`) que envia alertas periodicas programadas al canal o chat del personal de cobranzas mientras existan comprobantes pendientes de revision.
 
-En la primera terminal:
+### 3. Acreditacion y Control de Asistencia mediante QR
+- Generacion de credencial digital con codigo QR firmado para cada participante registrado y con pago aprobado.
+- Modulo de escaneo de credenciales en tiempo real con camara web (PC) o camara trasera de dispositivos moviles (smartphones/tablets).
+- Validacion inmediata contra el backend con registro de timestamp, operador de puerta y bloqueo de duplicados.
 
+---
+
+## Guia de Ejecucion Local
+
+Se recomienda abrir dos terminales separadas para correr el backend y el frontend.
+
+---
+
+### 1. Ejecutar el Backend (.NET 9)
+
+En tu primera terminal:
+
+#### Paso 1: Entrar a la carpeta backend
 ```bash
-# 1. Entrar a la carpeta del backend
 cd backend
+```
 
-# 2. Compilar el proyecto
+#### Paso 2: Crear el archivo de variables de entorno
+Copia la plantilla `.env.example` a un nuevo archivo `.env`:
+
+- En **Windows (PowerShell)**:
+  ```powershell
+  Copy-Item .env.example .env
+  ```
+- En **Linux / macOS / Bash**:
+  ```bash
+  cp .env.example .env
+  ```
+
+Edita `backend/.env` con tus credenciales reales (este archivo esta en `.gitignore` y nunca se subira al repositorio):
+```env
+PORT=8080
+DATABASE_URL=postgres://postgres.[TU_REF]:[TU_CLAVE]@aws-0-sa-east-1.pooler.supabase.com:6543/postgres?sslmode=require
+SUPABASE_URL=https://[TU_REF].supabase.co
+SUPABASE_KEY=[TU_ANON_KEY]
+JWT_SECRET=uleam_secure_jwt_token_secret_key_2026_ciist
+GOOGLE_CLIENT_ID=[TU_GOOGLE_CLIENT_ID].apps.googleusercontent.com
+GOOGLE_CLIENT_SECRET=[TU_GOOGLE_CLIENT_SECRET]
+TELEGRAM_BOT_TOKEN=[TU_BOT_TOKEN]
+TELEGRAM_CHAT_ID=[TU_CHAT_ID]
+```
+
+> **Nota sobre Fallback en Memoria:**  
+> Si no configuras `DATABASE_URL`, el backend arranca automaticamente con repositorios en memoria, permitiendo probar la API de inmediato sin conexion obligatoria a la nube.
+
+#### Paso 3: Restaurar dependencias y ejecutar
+```bash
 dotnet build
-
-# 3. Ejecutar el servidor API
 dotnet run
 ```
 
-Al iniciar correctamente, Kestrel mostrara el siguiente mensaje en consola:
+El servidor quedara escuchando en:
+- `http://localhost:8080/api/v1`
+- Comprobacion de estado: `http://localhost:8080/api/v1/health`
 
-```text
-=====================================================
-SERVIDOR ULEAM-EVENTOS (.NET 9 / C#) INICIADO EN PUERTO 8080
-URL Base: http://localhost:8080/api/v1
-Modo: development | Repositorio: Autonomo en Memoria (PostgreSQL Ready)
-=====================================================
-info: Microsoft.Hosting.Lifetime[14]
-      Now listening on: http://0.0.0.0:8080
+---
+
+### 2. Ejecutar el Frontend (React 19 + Vite)
+
+En tu segunda terminal:
+
+#### Paso 1: Entrar a la carpeta frontend
+```bash
+cd frontend
 ```
 
-Para verificar que el servicio responde, abre en el navegador:
-- http://localhost:8080/api/v1/health
-
-### 2. Iniciar el Frontend (React 19 + Vite)
-
-En la segunda terminal:
-
+#### Paso 2: Configurar variables de entorno
+Copia la plantilla `.env.example` a `.env`:
 ```bash
-# 1. Entrar a la carpeta del frontend
-cd frontend
+cp .env.example .env
+```
 
-# 2. Instalar dependencias (solo la primera vez)
+Configura en `frontend/.env`:
+```env
+VITE_SUPABASE_URL=https://[TU_REF].supabase.co
+VITE_SUPABASE_ANON_KEY=[TU_ANON_KEY]
+VITE_API_BASE=http://localhost:8080/api/v1
+VITE_GOOGLE_CLIENT_ID=[TU_GOOGLE_CLIENT_ID].apps.googleusercontent.com
+```
+
+#### Paso 3: Instalar dependencias
+```bash
 npm install
+```
 
-# 3. Iniciar el servidor de desarrollo
+#### Paso 4: Iniciar el servidor de desarrollo
+```bash
 npm run dev
 ```
 
-El servidor Vite desplegara las direcciones de acceso local y de red:
-
-```text
-  Local:   https://localhost:5173/
-  Network: https://192.168.0.239:5173/
-```
-
-Ingresa a la aplicacion desde tu navegador en:
-- https://localhost:5173
+Abre en tu navegador:
+- **`http://localhost:5173`**
 
 ---
 
-## Pruebas desde Dispositivos Moviles en Red Local (Wi-Fi)
+## Configuracion de Google OAuth con Supabase
 
-Por politicas de seguridad de los navegadores moviles (Chrome en Android y Safari en iOS), el acceso a la camara web requiere obligatoriamente una conexion segura (HTTPS).
+Para habilitar el boton **"Continuar con Google"**:
 
-1. Conecta tu telefono movil y tu computadora a la misma red Wi-Fi.
-2. Inicia el frontend (`npm run dev`) y el backend (`dotnet run`).
-3. En el navegador del telefono movil ingresa a la direccion HTTPS indicada en la terminal:
-   - https://192.168.0.239:5173/checkin
-4. Debido a que se utiliza un certificado SSL local de desarrollo:
-   - En Android (Chrome): Selecciona "Configuracion avanzada" y luego "Acceder a 192.168.0.239 (sitio no seguro)".
-   - En iOS (Safari): Selecciona "Mostrar detalles" y luego "Visitar este sitio web".
-5. Presiona el boton "Iniciar Camara" y otorga los permisos solicitados. La camara trasera del telefono se activara para escanear credenciales en tiempo real.
+1. **Google Cloud Console**:
+   - En *APIs y Servicios -> Credenciales*, crea un **ID de cliente de OAuth** tipo *Aplicacion Web*.
+   - **Origenes autorizados de JavaScript**:
+     - `http://localhost:5173`
+     - `https://localhost:5173`
+     - `https://micongreso.vercel.app`
+   - **URIs de redireccionamiento autorizados**:
+     - `https://[TU_SUPABASE_PROJECT_REF].supabase.co/auth/v1/callback`
 
----
-
-## Catalogo de Endpoints de la API REST (.NET 9)
-
-Ruta base del servicio: `/api/v1`
-
-| Metodo | Endpoint | Descripcion | Nivel de Acceso |
-| :--- | :--- | :--- | :--- |
-| GET | `/api/v1/health` | Estado de operacion del servicio | Publico |
-| POST | `/api/v1/auth/login` | Autenticacion y emision de token JWT | Publico |
-| POST | `/api/v1/auth/register` | Registro de nuevos usuarios con hash PBKDF2 | Publico |
-| GET | `/api/v1/eventos` | Listado general de congresos academicos | Publico |
-| GET | `/api/v1/eventos/{slug}` | Informacion detallada de un congreso por slug | Publico |
-| POST | `/api/v1/eventos` | Creacion directa de nuevos eventos | Publico / Admin |
-| PATCH | `/api/v1/eventos/{id}/estado` | Actualizacion del estado del congreso | Publico / Admin |
-| POST | `/api/v1/inscripciones` | Registro de inscripcion con o sin comprobante | Publico / Asistente |
-| GET | `/api/v1/inscripciones` | Listado y auditoria de inscripciones y SLA | Personal de Gestion |
-| GET | `/api/v1/inscripciones/{id}` | Detalle de inscripcion individual | Personal de Gestion |
-| PUT | `/api/v1/inscripciones/{id}/pago` | Validacion de estado de pago (Pagado/Rechazado) | Personal de Gestion |
-| POST | `/api/v1/inscripciones/{id}/comprobante` | Carga de comprobante (pasa a Pago en verificacion) | Asistente / Publico |
-| PATCH | `/api/v1/inscripciones/{id}/revision` | Aprobacion o rechazo de pago y emision de QR | Personal de Gestion |
-| GET | `/api/v1/notificaciones/config` | Consulta de configuracion del bot Telegram/WhatsApp | Personal de Gestion |
-| POST | `/api/v1/notificaciones/config` | Actualizacion de credenciales y parametros del bot | Personal de Gestion |
-| POST | `/api/v1/notificaciones/test` | Envio de mensaje de prueba por Telegram/WhatsApp | Personal de Gestion |
-| POST | `/api/v1/notificaciones/recordatorio-manual` | Disparo manual de recordatorio persistente | Personal de Gestion |
-| POST | `/api/v1/asistencia/check-in` | Validacion de credencial QR en puerta | Personal Asistencia |
-| GET | `/api/v1/dashboard/metricas` | Metricas y KPIs consolidados de la plataforma | Administrativo |
-| GET | `/api/v1/certificados` | Consulta de certificados emitidos por usuario | Publico / Asistente |
-| POST | `/api/v1/encuestas/responder` | Envio de respuestas a encuestas de ponencias | Asistente |
+2. **Panel de Supabase**:
+   - Ve a **Authentication -> Providers -> Google**.
+   - Activa el interruptor **Enable Google provider**.
+   - Pega tu `Client ID` y `Client Secret`.
+   - Guarda los cambios.
+   - Ve a **Authentication -> URL Configuration**:
+     - **Site URL**: `http://localhost:5173`
+     - **Redirect URLs**:
+       - `http://localhost:5173/**`
+       - `https://localhost:5173/**`
+       - `https://micongreso.vercel.app/**`
 
 ---
 
-## Sistema de Validacion de Pagos por Estados y Recordatorios Persistentes
+## Acceso desde Dispositivos Moviles y Uso de Camara (Red Local)
 
-La plataforma implementa un flujo estricto de auditoria financiera compuesto por tres estados cardinales:
+Para probar el escaneo de codigos QR con la camara de un telefono movil dentro de la misma red Wi-Fi:
 
-1. **No pagado**:
-   - Registro inicial con arancel pendiente sin comprobante adjunto.
-   - La credencial QR permanece bloqueada hasta que el pago sea acreditado.
-   - El participante puede cargar su archivo o enlace de comprobante desde la seccion "Mis Eventos".
-
-2. **Pago en verificacion**:
-   - Se activa de forma automatica en cuanto el participante carga su comprobante.
-   - Inicia la ventana reglamentaria de auditoria SLA de 24 horas.
-   - Dispara una notificacion inmediata al Bot de Telegram y genera el enlace directo de alerta para WhatsApp al encargado de finanzas.
-   - **Mecanismo de Recordatorios Persistentes**: El servicio en segundo plano `PaymentReminderBackgroundService` (`IHostedService` en .NET 9) monitorea periodicamente cada N minutos (15 min por defecto) los pagos que permanezcan en este estado y vuelve a notificar al encargado hasta que cada registro cambie formalmente de estado.
-
-3. **Pagado**:
-   - El personal de finanzas valida y aprueba el pago.
-   - Se libera y activa la credencial oficial digital con token QR unico para el control de acceso (check-in) en puerta.
-
-4. **Rechazado** (Flujo alternativo):
-   - El comprobante fue ilegible o el deposito no se acredito en cuenta corriente.
-   - El pago sale del estado de verificacion y se permite la recarga de un nuevo soporte.
-
-### Configuracion del Bot (Telegram y WhatsApp)
-
-Variables de entorno configurables en el backend:
-
-```env
-TELEGRAM_BOT_TOKEN="0000000000:AAExampleTokenFromBotFather"
-TELEGRAM_CHAT_ID="-1001234567890"
-WHATSAPP_PHONE="+593987654321"
-NOTIFICATION_INTERVAL_MINUTES=15
-```
-
-Tambien es posible ajustar los parametros en caliente desde la interfaz web en la opcion **Configurar Bot** dentro del Dashboard de Finanzas.
+1. **Requisito de Seguridad del Navegador**: Los navegadores moviles modernos (Chrome, Safari) exigen una conexion segura **HTTPS** para conceder permisos de camara web (excepto en `localhost`).
+2. **Exponer Vite en red local con HTTPS**:
+   - En `frontend/vite.config.js`, puedes configurar el plugin `@vitejs/plugin-basic-ssl` o proveer certificados locales (`cert.pem` y `key.pem`).
+   - Ejecuta:
+     ```bash
+     npm run dev -- --host 0.0.0.0
+     ```
+   - Accede desde el movil a la IP de tu computador (ejemplo: `https://192.168.1.15:5173`).
+   - Acepta la advertencia de certificado autofirmado en el movil para habilitar el uso de la camara trasera.
 
 ---
 
-## Almacenamiento en Supabase Storage (Bucket 'comprobantes') y Compresion WebP
+## Base de Datos y Storage en Supabase
 
-Para optimizar el peso de los comprobantes y no saturar el almacenamiento ni el ancho de banda movil de los estudiantes y participantes, la plataforma incorpora:
+### 1. Tablas y Migraciones SQL
+En el editor SQL de Supabase, ejecuta los scripts de la carpeta `supabase/migrations/`:
+- `01_schema.sql`: Creacion de esquemas, tablas de usuarios, eventos, inscripciones, auditoria y triggers.
+- `02_seed_data.sql`: Carga de datos base y usuarios iniciales.
 
-1. **Compresor y Convertidor WebP en el Cliente (Frontend React 19):**
-   - Procesa cualquier foto (JPG, PNG, HEIC) en el navegador del participante mediante la API Canvas nativa antes de realizar la subida.
-   - Aplica redimensionamiento proporcional hasta 1920x1080 px y codifica en `.webp` a calidad 82%.
-   - Reduce el tamano de los archivos en un **80% a 95%** (de 4 MB - 6 MB a aproximadamente 150 KB - 250 KB), manteniendo la nitidez completa de los textos y numeros de transaccion bancaria.
-   - Si el participante selecciona un documento PDF oficial de la banca, el sistema detecta el tipo MIME y lo preserva sin alteraciones.
+### 2. Bucket de Almacenamiento
+Crea un bucket publico en **Supabase -> Storage**:
+- **Nombre del bucket**: `comprobantes-pago`
+- Permite formatos: `image/jpeg`, `image/png`, `image/webp`, `application/pdf`.
 
-2. **Bucket Dedicado 'comprobantes' en Supabase Storage:**
-   - Ubicacion: `https://xoqzmiqdsgtxlhhpandb.supabase.co/storage/v1/object/public/comprobantes/`
-   - Politicas RLS activas en `storage.objects` para subida por participantes y lectura publica por CDN.
-
-3. **Ejecucion del Script SQL en Supabase:**
-   - El script completo se encuentra disponible en `database/supabase_setup_comprobantes.sql` y en la migracion `supabase/migrations/04_storage_comprobantes_webp.sql`.
-   - Para ejecutarlo, abre la consola web de Supabase en tu proyecto (`https://supabase.com/dashboard/project/xoqzmiqdsgtxlhhpandb/sql`), pega el contenido del archivo y presiona **Run**.
-
----
-
-## Usuarios y Credenciales Institucionales de Prueba
-
-Todos los usuarios de prueba estan preconfigurados en el repositorio en memoria y en las migraciones de base de datos con la siguiente contrasena unificada:
-
-Contrasena general: `Admin123!`
-
-| Rol Asignado | Correo Institucional | Nombre Completo | Unidad Academica / Cargo |
-| :--- | :--- | :--- | :--- |
-| Super Administrador | `admin@uleam.edu.ec` | Carlos Adrian Valencia Mendoza | Direccion DITIC / ULEAM |
-| Administrador de Evento | `organizador@uleam.edu.ec` | Jandry David Fernandez Cedeno | Facultad Ciencias de la Vida |
-| Personal de Gestion | `gestion@uleam.edu.ec` | Jose Andres Loor Munoz | Direccion Financiera ULEAM |
-| Personal de Asistencia | `asistencia@uleam.edu.ec` | Alan Joel Cobena Naranjo | Coordinacion Logistica de Campo |
-| Participante / Estudiante | `estudiante@uleam.edu.ec` | Karla Jamileth Andrade Mendoza | Ingenieria en Software |
-| Participante Externo | `participante.externo@gmail.com` | Javier David Jaramillo Intriago | Universidad Tecnica de Manabi |
+### Usuarios y Credenciales de Prueba (Seed Data)
+| Rol | Correo Electronico | Contrasena |
+| :--- | :--- | :--- |
+| **Super Administrador** | `admin@uleam.edu.ec` | `Admin123!` |
+| **Organizador / Admin Evento** | `organizador@uleam.edu.ec` | `Admin123!` |
+| **Personal de Gestion / Finanzas** | `gestion@uleam.edu.ec` | `Admin123!` |
+| **Control de Asistencia** | `asistencia@uleam.edu.ec` | `Admin123!` |
+| **Participante / Estudiante** | `estudiante@uleam.edu.ec` | `Admin123!` |
 
 ---
 
-## Comandos Adicionales de Compilacion y Verificacion
+## Politica de Seguridad y Exclusion de Credenciales
 
-### Backend (.NET 9)
-- Compilar binarios de depuracion:
-  ```powershell
-  dotnet build backend
-  ```
-- Generar publicacion optimizada para produccion:
-  ```powershell
-  dotnet publish backend -c Release -o ./publish
-  ```
-
-### Frontend (React 19 + Vite)
-- Compilacion de produccion:
-  ```powershell
-  npm --prefix frontend run build
-  ```
-- Analisis estatico de codigo (Linter):
-  ```powershell
-  npm --prefix frontend run lint
-  ```
+Este repositorio esta protegido para evitar la filtracion accidental de secretos:
+- Los archivos `.env`, `.env.local`, certificados SSL (`*.pem`), archivos JSON de cuentas de servicio y credenciales OAuth (`client_secret_*.json`, `credentials.json`) estan estrictamente excluidos en `.gitignore`.
+- Las plantillas `.env.example` contienen unicamente descripciones de variables y marcadores de posicion (`[YOUR_KEY]`), sin exponer valores de produccion ni credenciales sensibles.
+- Nunca agregues secretos reales directamente en el codigo fuente. Utiliza siempre variables de entorno.

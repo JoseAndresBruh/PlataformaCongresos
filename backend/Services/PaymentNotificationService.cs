@@ -56,12 +56,12 @@ namespace UleamEventos.Api.Services
                 .Replace("<i>", "").Replace("</i>", "")
                 .Replace("<a href=\"", "").Replace("\">Ver Documento</a>", "");
 
-            var whatsAppUrl = GenerateWhatsAppUrl(plainText, botConfig.WhatsAppPhone);
-
             bool telegramSent = false;
             string telegramError = string.Empty;
 
-            var token = !string.IsNullOrEmpty(botConfig.TelegramBotToken) ? botConfig.TelegramBotToken : _config.TelegramBotToken;
+            var token = !string.IsNullOrEmpty(botConfig.TelegramBotToken) 
+                ? botConfig.TelegramBotToken 
+                : (!string.IsNullOrEmpty(_config.TelegramBotToken) ? _config.TelegramBotToken : "9190712678:AAFZQ9Al_IxHRY-VEHTlEHty0jr6hfRcRjM");
             var chatId = !string.IsNullOrEmpty(botConfig.TelegramChatId) ? botConfig.TelegramChatId : _config.TelegramChatId;
 
             if (!string.IsNullOrEmpty(token) && !string.IsNullOrEmpty(chatId))
@@ -96,15 +96,19 @@ namespace UleamEventos.Api.Services
                     _logger.LogWarning(ex, "[NOTIFICACIONES] Excepcion al conectar con Telegram API");
                 }
             }
+            else if (string.IsNullOrEmpty(chatId))
+            {
+                telegramError = "Chat ID no configurado. Abra @uleam_eventos_pagos_bot, pulse /start y detecte su Chat ID.";
+            }
 
             return new NotificationResponse
             {
-                Exito = telegramSent || !string.IsNullOrEmpty(whatsAppUrl),
-                Canal = telegramSent ? "telegram" : "whatsapp",
+                Exito = telegramSent,
+                Canal = "telegram",
                 Mensaje = telegramSent 
-                    ? "Alerta enviada exitosamente al Bot de Telegram del encargado de finanzas"
-                    : $"Notificacion lista para WhatsApp. Telegram: {(string.IsNullOrEmpty(token) ? "Token no configurado" : telegramError)}",
-                UrlWhatsApp = whatsAppUrl
+                    ? "Alerta enviada exitosamente al Bot de Telegram (@uleam_eventos_pagos_bot) del encargado de Finanzas."
+                    : $"Notificación de Telegram: {telegramError}",
+                UrlWhatsApp = null
             };
         }
 
@@ -149,12 +153,12 @@ namespace UleamEventos.Api.Services
                 .Replace("<i>", "").Replace("</i>", "")
                 .Replace("<code>", "").Replace("</code>", "");
 
-            var whatsAppUrl = GenerateWhatsAppUrl(plainText, botConfig.WhatsAppPhone);
-
             bool telegramSent = false;
             string telegramError = string.Empty;
 
-            var token = !string.IsNullOrEmpty(botConfig.TelegramBotToken) ? botConfig.TelegramBotToken : _config.TelegramBotToken;
+            var token = !string.IsNullOrEmpty(botConfig.TelegramBotToken) 
+                ? botConfig.TelegramBotToken 
+                : (!string.IsNullOrEmpty(_config.TelegramBotToken) ? _config.TelegramBotToken : "9190712678:AAFZQ9Al_IxHRY-VEHTlEHty0jr6hfRcRjM");
             var chatId = !string.IsNullOrEmpty(botConfig.TelegramChatId) ? botConfig.TelegramChatId : _config.TelegramChatId;
 
             if (!string.IsNullOrEmpty(token) && !string.IsNullOrEmpty(chatId))
@@ -189,15 +193,19 @@ namespace UleamEventos.Api.Services
                     _logger.LogWarning(ex, "[RECORDATORIOS] Error al conectar con Telegram");
                 }
             }
+            else if (string.IsNullOrEmpty(chatId))
+            {
+                telegramError = "Chat ID no configurado. Abra @uleam_eventos_pagos_bot y pulse /start.";
+            }
 
             return new NotificationResponse
             {
-                Exito = telegramSent || !string.IsNullOrEmpty(whatsAppUrl),
-                Canal = telegramSent ? "telegram" : "whatsapp",
+                Exito = telegramSent,
+                Canal = "telegram",
                 Mensaje = telegramSent
-                    ? $"Recordatorio persistente de {list.Count} pagos enviado exitosamente por Telegram"
-                    : $"Recordatorio generado para WhatsApp ({list.Count} pendientes). Telegram: {(string.IsNullOrEmpty(token) ? "Token no configurado" : telegramError)}",
-                UrlWhatsApp = whatsAppUrl
+                    ? $"Recordatorio persistente de {list.Count} pagos enviado exitosamente por Telegram al chat {chatId}."
+                    : $"Recordatorio Telegram: {telegramError}",
+                UrlWhatsApp = null
             };
         }
 
@@ -206,7 +214,7 @@ namespace UleamEventos.Api.Services
             var botConfig = await _repo.GetBotConfigAsync();
             var texto = !string.IsNullOrWhiteSpace(mensaje)
                 ? mensaje
-                : "Prueba de conexion del sistema de notificaciones ULEAM-EVENTOS. La sincronizacion con el encargado de finanzas se encuentra activa y operativa.";
+                : "Prueba de conexion operativa del Bot de Notificaciones ULEAM-EVENTOS. La sincronizacion con Finanzas esta activa.";
 
             var sb = new StringBuilder();
             sb.AppendLine("<b>[ULEAM EVENTOS - PRUEBA DE CONEXION INSTITUCIONAL]</b>");
@@ -214,13 +222,9 @@ namespace UleamEventos.Api.Services
             sb.AppendLine();
             sb.AppendLine($"<i>Fecha y hora del servidor: {DateTime.UtcNow:yyyy-MM-dd HH:mm:ss} UTC</i>");
 
-            var plainText = sb.ToString()
-                .Replace("<b>", "").Replace("</b>", "")
-                .Replace("<i>", "").Replace("</i>", "");
-
-            var whatsAppUrl = GenerateWhatsAppUrl(plainText, botConfig.WhatsAppPhone);
-
-            var token = !string.IsNullOrEmpty(botConfig.TelegramBotToken) ? botConfig.TelegramBotToken : _config.TelegramBotToken;
+            var token = !string.IsNullOrEmpty(botConfig.TelegramBotToken) 
+                ? botConfig.TelegramBotToken 
+                : (!string.IsNullOrEmpty(_config.TelegramBotToken) ? _config.TelegramBotToken : "9190712678:AAFZQ9Al_IxHRY-VEHTlEHty0jr6hfRcRjM");
             var chatId = !string.IsNullOrEmpty(botConfig.TelegramChatId) ? botConfig.TelegramChatId : _config.TelegramChatId;
 
             bool telegramSent = false;
@@ -258,17 +262,17 @@ namespace UleamEventos.Api.Services
             }
             else
             {
-                telegramDetalle = "Telegram Bot Token o Chat ID no configurados en las variables del sistema";
+                telegramDetalle = "Telegram Bot Token o Chat ID no configurados en el sistema";
             }
 
             return new NotificationResponse
             {
-                Exito = telegramSent || !string.IsNullOrEmpty(whatsAppUrl),
-                Canal = (canal == "telegram" && telegramSent) ? "telegram" : "whatsapp",
+                Exito = telegramSent,
+                Canal = "telegram",
                 Mensaje = telegramSent
                     ? $"Mensaje de prueba enviado con exito por Telegram al chat {chatId}"
-                    : $"Prueba generada para WhatsApp. Telegram: {telegramDetalle}",
-                UrlWhatsApp = whatsAppUrl
+                    : $"Detalle de Telegram: {telegramDetalle}",
+                UrlWhatsApp = null
             };
         }
 

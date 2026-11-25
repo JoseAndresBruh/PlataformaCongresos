@@ -18,6 +18,8 @@ namespace UleamEventos.Api.Configuration
         public string SupabaseUrl { get; set; } = "https://xoqzmiqdsgtxlhhpandb.supabase.co";
         public string SupabaseKey { get; set; } = string.Empty;
         public string SupabaseBucket { get; set; } = "comprobantes";
+        public string GoogleClientId { get; set; } = string.Empty;
+        public string GoogleClientSecret { get; set; } = string.Empty;
 
         public static AppConfig Load(IConfiguration configuration)
         {
@@ -99,6 +101,15 @@ namespace UleamEventos.Api.Configuration
             config.SupabaseBucket = Environment.GetEnvironmentVariable("SUPABASE_BUCKET") 
                 ?? configuration.GetValue<string>("Supabase:Bucket") 
                 ?? "comprobantes";
+
+            // Google OAuth Config
+            config.GoogleClientId = Environment.GetEnvironmentVariable("GOOGLE_CLIENT_ID") 
+                ?? configuration.GetValue<string>("Google:ClientId") 
+                ?? string.Empty;
+
+            config.GoogleClientSecret = Environment.GetEnvironmentVariable("GOOGLE_CLIENT_SECRET") 
+                ?? configuration.GetValue<string>("Google:ClientSecret") 
+                ?? string.Empty;
 
             return config;
         }

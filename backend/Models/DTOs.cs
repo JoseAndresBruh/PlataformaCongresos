@@ -148,4 +148,22 @@ namespace UleamEventos.Api.Models
         [JsonPropertyName("observaciones")]
         public string? Observaciones { get; set; }
     }
+
+    public class GoogleAuthRequest
+    {
+        [JsonPropertyName("correo")]
+        public string Correo { get; set; } = string.Empty;
+
+        [JsonPropertyName("nombres")]
+        public string Nombres { get; set; } = string.Empty;
+
+        [JsonPropertyName("apellidos")]
+        public string? Apellidos { get; set; }
+
+        [JsonPropertyName("url_foto_perfil")]
+        public string? UrlFotoPerfil { get; set; }
+
+        [JsonPropertyName("id_token")]
+        public string? IdToken { get; set; }
+    }
 }

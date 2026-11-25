@@ -685,6 +685,8 @@ export default function App() {
   const [newEventForm, setNewEventForm] = useState({
     nombre: '',
     modalidad: 'PRESENCIAL',
+    fecha_inicio: '',
+    fecha_fin: '',
     lugar: 'Paraninfo Alfonso Aguilar Ruilova, Manta',
     capacidad_maxima: 200,
     descripcion: '',
@@ -1313,6 +1315,8 @@ export default function App() {
     const payload = {
       nombre: newEventForm.nombre,
       modalidad: newEventForm.modalidad,
+      fecha_inicio: newEventForm.fecha_inicio ? new Date(newEventForm.fecha_inicio).toISOString() : new Date(Date.now() + 86400000 * 20).toISOString(),
+      fecha_fin: newEventForm.fecha_fin ? new Date(newEventForm.fecha_fin).toISOString() : new Date(Date.now() + 86400000 * 23).toISOString(),
       lugar: newEventForm.lugar,
       capacidad_maxima: parseInt(newEventForm.capacidad_maxima, 10) || 150,
       descripcion: newEventForm.descripcion || 'Evento académico oficial de la Facultad de Ciencias de la Vida y Tecnologías.',
@@ -3303,6 +3307,8 @@ export default function App() {
                     <option value="ADMIN_EVENTO">Admin Evento</option>
                     <option value="PERSONAL_GESTION">Gestión</option>
                     <option value="PERSONAL_ASISTENCIA">Asistencia</option>
+                    <option value="PONENTE">Ponente</option>
+                    <option value="REVISOR">Par Académico (Revisor)</option>
                     <option value="ASISTENTE">Asistente</option>
                   </select>
                 </div>
@@ -3341,7 +3347,9 @@ export default function App() {
                               u.rol === 'SUPER_ADMIN' ? 'chip-primary' :
                               u.rol === 'ADMIN_EVENTO' ? 'chip-urgent' :
                               u.rol === 'PERSONAL_GESTION' ? 'chip-alert' :
-                              u.rol === 'PERSONAL_ASISTENCIA' ? 'chip-success' : 'chip-primary'
+                              u.rol === 'PERSONAL_ASISTENCIA' ? 'chip-success' :
+                              u.rol === 'PONENTE' ? 'chip-primary' :
+                              u.rol === 'REVISOR' ? 'chip-alert' : 'chip-primary'
                             }`}>
                               {u.rol}
                             </span>
@@ -3365,6 +3373,8 @@ export default function App() {
                               <option value="ADMIN_EVENTO">ADMIN_EVENTO</option>
                               <option value="PERSONAL_GESTION">PERSONAL_GESTION</option>
                               <option value="PERSONAL_ASISTENCIA">PERSONAL_ASISTENCIA</option>
+                              <option value="PONENTE">PONENTE</option>
+                              <option value="REVISOR">PAR ACADÉMICO / REVISOR</option>
                               <option value="ASISTENTE">ASISTENTE</option>
                             </select>
                           </td>
@@ -4156,7 +4166,11 @@ export default function App() {
                       Prueba Móvil en Red Local:
                     </strong>
                     <span style={{ fontSize: '0.78rem', color: 'var(--text-muted)' }}>
-                      Ingresa en tu teléfono a: <strong style={{ color: 'var(--primary-container)', userSelect: 'all' }}>https://{typeof window !== 'undefined' && window.location.hostname !== 'localhost' ? window.location.hostname : '192.168.0.239'}:5173</strong>
+                      Ingresa en tu teléfono a: <strong style={{ color: 'var(--primary-container)', userSelect: 'all' }}>
+                        {typeof window !== 'undefined' && !window.location.hostname.includes('localhost') && !window.location.hostname.match(/^\d+\.\d+\.\d+\.\d+$/)
+                          ? window.location.origin
+                          : `https://${typeof window !== 'undefined' && window.location.hostname !== 'localhost' ? window.location.hostname : '192.168.0.239'}:5173`}
+                      </strong>
                     </span>
                   </div>
                 </div>
@@ -5164,6 +5178,31 @@ export default function App() {
                     className="input-control"
                     value={newEventForm.capacidad_maxima}
                     onChange={(e) => setNewEventForm({ ...newEventForm, capacidad_maxima: e.target.value })}
+                  />
+                </div>
+              </div>
+
+              <div className="responsive-grid-2" style={{ marginBottom: '16px' }}>
+                <div>
+                  <label style={{ display: 'block', fontSize: '0.85rem', fontWeight: 600, marginBottom: '6px' }}>
+                    Fecha de Inicio:
+                  </label>
+                  <input
+                    type="date"
+                    className="input-control"
+                    value={newEventForm.fecha_inicio}
+                    onChange={(e) => setNewEventForm({ ...newEventForm, fecha_inicio: e.target.value })}
+                  />
+                </div>
+                <div>
+                  <label style={{ display: 'block', fontSize: '0.85rem', fontWeight: 600, marginBottom: '6px' }}>
+                    Fecha de Finalización:
+                  </label>
+                  <input
+                    type="date"
+                    className="input-control"
+                    value={newEventForm.fecha_fin}
+                    onChange={(e) => setNewEventForm({ ...newEventForm, fecha_fin: e.target.value })}
                   />
                 </div>
               </div>

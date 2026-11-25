@@ -220,6 +220,8 @@ export default function App() {
     if (clean === '/admin' || clean === '/admin-eventos' || clean === '/admin-kpi' || clean === '/resumen') return { view: 'admin_eventos', path: '/admin-eventos', role: 'ADMIN_EVENTO' };
     if (clean === '/gestion-pagos' || clean === '/finanzas' || clean === '/pagos') return { view: 'gestion_pagos', path: '/gestion-pagos', role: 'GESTION' };
     if (clean === '/checkin' || clean === '/checkin-staff' || clean === '/asistencia') return { view: 'checkin_staff', path: '/checkin', role: 'ASISTENCIA_STAFF' };
+    if (clean === '/ponente' || clean === '/expositores') return { view: 'ponente_portal', path: '/ponente', role: 'PONENTE' };
+    if (clean === '/revisor' || clean === '/par-academico' || clean === '/evaluacion') return { view: 'revisor_portal', path: '/revisor', role: 'REVISOR' };
     if (clean.startsWith('/evento/')) {
       const slug = clean.replace('/evento/', '');
       return { view: 'evento_detail', slug, path: clean };
@@ -512,20 +514,27 @@ export default function App() {
       const cat = isJavier ? 'Profesional / Externo ($25.00)' : 'Estudiante ULEAM (Beca 100%)';
       const inst = isJavier ? 'Universidad Técnica de Manabí (UTM)' : 'ULEAM - Ingeniería en Software';
 
+      const offlineMode = simulateOffline || !isOnline;
       setScanResult({
         exito: true,
-        mensaje: 'ACCESO CONCEDIDO',
+        mensaje: offlineMode ? 'ACCESO CONCEDIDO (COLA OFFLINE)' : 'ACCESO CONCEDIDO',
         participante: nombre,
         categoria: cat,
         institucion: inst,
         hora: new Date().toLocaleTimeString('es-EC'),
       });
 
+      const entryId = Date.now();
       setRecentCheckins((prev) => [
-        { id: Date.now(), nombre, tiempo: 'Justo ahora', estado: 'VALIDADO' },
+        { id: entryId, nombre, tiempo: 'Justo ahora', estado: offlineMode ? 'OFFLINE_PENDIENTE' : 'VALIDADO' },
         ...prev,
       ]);
-      showToast(`¡Check-in concedido!: ${nombre}`);
+      if (offlineMode) {
+        setOfflineQueue((prev) => [...prev, { id: entryId, code, nombre, hora: new Date().toISOString() }]);
+        showToast(`Check-in guardado en cola offline: ${nombre}`);
+      } else {
+        showToast(`¡Check-in concedido!: ${nombre}`);
+      }
     }
   };
 
@@ -735,6 +744,171 @@ export default function App() {
         'Certificado regenerado y liberado con firma oficial del Dr. Marcos Zambrano Zambrano.',
     },
   ]);
+
+  // =========================================================================
+  // ESTADOS DE CONTINGENCIA OFFLINE (ESCÁNER QR EN PUERTA)
+  // =========================================================================
+  const [isOnline, setIsOnline] = useState(() => (typeof navigator !== 'undefined' ? navigator.onLine : true));
+  const [simulateOffline, setSimulateOffline] = useState(false);
+  const [offlineQueue, setOfflineQueue] = useState(() => {
+    try {
+      const saved = localStorage.getItem('uleam_offline_checkins');
+      return saved ? JSON.parse(saved) : [];
+    } catch {
+      return [];
+    }
+  });
+
+  useEffect(() => {
+    const onOnline = () => setIsOnline(true);
+    const onOffline = () => setIsOnline(false);
+    window.addEventListener('online', onOnline);
+    window.addEventListener('offline', onOffline);
+    return () => {
+      window.removeEventListener('online', onOnline);
+      window.removeEventListener('offline', onOffline);
+    };
+  }, []);
+
+  useEffect(() => {
+    try {
+      localStorage.setItem('uleam_offline_checkins', JSON.stringify(offlineQueue));
+    } catch {
+      // Ignorar errores de cuota
+    }
+  }, [offlineQueue]);
+
+  // =========================================================================
+  // ESTADOS PORTAL DEL PONENTE (CRONOGRAMA EN VIVO Y ENTREGA EN 2 FASES)
+  // =========================================================================
+  const [ponenteSchedule, setPonenteSchedule] = useState([
+    {
+      id: 'pon-1',
+      hora: '09:00 - 09:45',
+      duracion: '45 min',
+      titulo: 'Keynote: Arquitecturas Cloud-Native en la Educación Superior',
+      ponente: 'Dr. Jonny Pérez Véliz',
+      sala: 'Paraninfo Alfonso Aguilar Ruilova',
+      estado: 'FINALIZADO',
+    },
+    {
+      id: 'pon-2',
+      hora: '10:00 - 10:40',
+      duracion: '40 min',
+      titulo: 'IA Generativa Aplicada al Análisis de Datos Académicos',
+      ponente: 'Dr. Jonny Pérez Véliz',
+      sala: 'Auditorio FCVT - Sala A',
+      estado: 'EN_CURSO',
+    },
+    {
+      id: 'pon-3',
+      hora: '10:45 - 11:25',
+      duracion: '40 min',
+      titulo: 'Microservicios Resilientes con .NET 9 y PostgreSQL',
+      ponente: 'Mg. Sc. Elena Vásquez Romero',
+      sala: 'Auditorio FCVT - Sala A',
+      estado: 'SIGUIENTE',
+    },
+    {
+      id: 'pon-4',
+      hora: '11:30 - 12:10',
+      duracion: '40 min',
+      titulo: 'Ciberseguridad y Privacidad en Campus Universitarios',
+      ponente: 'Ing. Ricardo Arauz',
+      sala: 'Auditorio FCVT - Sala B',
+      estado: 'RETRASADO',
+    },
+  ]);
+
+  const [ponenteDeliverables, setPonenteDeliverables] = useState({
+    borrador: {
+      estado: 'COMPLETADO',
+      archivo: 'Borrador_IA_Generativa_ULEAM_v1.pdf',
+      fecha: '18/11/2026 16:40',
+    },
+    final: {
+      estado: 'PENDIENTE',
+      archivo: '',
+      fecha: '',
+    },
+  });
+  const [ponenteSelectedFile, setPonenteSelectedFile] = useState('');
+
+  // =========================================================================
+  // ESTADOS MÓDULO PAR ACADÉMICO / REVISOR (DOBLE CIEGO Y RÚBRICA)
+  // =========================================================================
+  const [revisorPapers, setRevisorPapers] = useState([
+    {
+      id: 'MAN-2026-884',
+      titulo: 'Detección Temprana de Deserción Estudiantil mediante Random Forest y Redes Neuronales',
+      linea: 'Inteligencia Artificial y Ciencia de Datos',
+      autorAnonimo: 'Autor Anónimo #884 (Doble Ciego)',
+      fechaLimite: 'Vence en 2 días',
+      sla: 'POR_VENCER',
+      estado: 'PENDIENTE',
+      dictamen: null,
+      puntajeTotal: null,
+      abstract:
+        'El presente estudio propone un modelo predictivo basado en aprendizaje automático supervisado para identificar factores de riesgo de deserción académica en carreras de ingeniería. Se analizaron 4,200 registros históricos anonimizados logrando un F1-Score de 0.91.',
+      metodologia:
+        'Se empleó validación cruzada estratificada (k=10), balanceo de clases mediante SMOTE y comparación estadística entre Random Forest, XGBoost y Perceptrón Multicapa.',
+      referencias: [
+        '[1] Breiman, L. (2001). Random Forests. Machine Learning, 45(1), 5-32.',
+        '[2] Chawla, N. V., et al. (2002). SMOTE: Synthetic Minority Over-sampling Technique. JAIR, 16, 321-357.',
+        '[3] UNESCO IESALC (2024). Inteligencia Artificial y Retención Universitaria en América Latina.',
+      ],
+      similitudCompilatio: '6% (Aceptable)',
+    },
+    {
+      id: 'MAN-2026-912',
+      titulo: 'Implementación de Sistemas QR Offline-First para Control de Acceso Masivo en Recintos Universitarios',
+      linea: 'Ingeniería de Software y Redes',
+      autorAnonimo: 'Autor Anónimo #912 (Doble Ciego)',
+      fechaLimite: 'Vence en 5 días',
+      sla: 'A_TIEMPO',
+      estado: 'PENDIENTE',
+      dictamen: null,
+      puntajeTotal: null,
+      abstract:
+        'Se diseña e implementa una arquitectura Progressive Web App (PWA) orientada a resolver los cuellos de botella ocasionados por fallos de conectividad inalámbrica durante el registro de asistencia masiva en congresos universitarios.',
+      metodologia:
+        'Prueba experimental comparativa en 3 eventos institucionales con latencia controlada, midiendo tiempo medio de check-in por participante y tasa de sincronización diferida sin pérdida de integridad.',
+      referencias: [
+        '[1] Kleppmann, M. (2017). Designing Data-Intensive Applications. O\'Reilly Media.',
+        '[2] W3C Service Workers Specification (2025). Offline Web Applications.',
+      ],
+      similitudCompilatio: '4% (Excelente)',
+    },
+    {
+      id: 'MAN-2026-745',
+      titulo: 'Arquitecturas Serverless vs. Contenedores .NET 9 en Plataformas Académicas de Alta Concurrencia',
+      linea: 'Arquitectura Cloud y DevOps',
+      autorAnonimo: 'Autor Anónimo #745 (Doble Ciego)',
+      fechaLimite: 'Evaluado ayer',
+      sla: 'A_TIEMPO',
+      estado: 'EVALUADO',
+      dictamen: 'APROBADO',
+      puntajeTotal: 19,
+      abstract:
+        'Evaluación de rendimiento, latencia p95 y costo operativo bajo pruebas de carga de 5,000 usuarios concurrentes durante procesos de inscripción académica.',
+      metodologia:
+        'Pruebas de estrés ejecutadas con k6 sobre clústeres de contenedores .NET 9 y PostgreSQL con pooler de conexiones.',
+      referencias: [
+        '[1] Microsoft .NET 9 Performance Benchmarks (2025).',
+        '[2] Fowler, M. (2023). Patterns of Enterprise Application Architecture.',
+      ],
+      similitudCompilatio: '3% (Excelente)',
+    },
+  ]);
+  const [selectedPaperId, setSelectedPaperId] = useState('MAN-2026-884');
+  const [rubricScores, setRubricScores] = useState({
+    originalidad: 4,
+    metodologia: 5,
+    referencias: 4,
+    formato: 4,
+  });
+  const [rubricComment, setRubricComment] = useState('');
+  const [rubricVerdict, setRubricVerdict] = useState('APROBADO');
 
   // Modales adicionales del Footer
   const [showFacultyModal, setShowFacultyModal] = useState(false);
@@ -1124,6 +1298,8 @@ export default function App() {
       else if (view === 'admin_eventos' || view === 'admin_kpi') targetPath = '/admin-eventos';
       else if (view === 'gestion_pagos') targetPath = '/gestion-pagos';
       else if (view === 'checkin_staff') targetPath = '/checkin';
+      else if (view === 'ponente_portal') targetPath = '/ponente';
+      else if (view === 'revisor_portal') targetPath = '/revisor';
       else if (view === 'not_found') targetPath = '/404';
       else targetPath = '/';
     }
@@ -1304,7 +1480,109 @@ export default function App() {
     }
   };
 
-  // Creación Real de Eventos conectada al Backend en Go (RF-006)
+  // Sincronizar cola offline de check-ins cuando vuelve la conexión
+  const handleSyncOfflineQueue = () => {
+    if (offlineQueue.length === 0) return;
+    if (!isOnline || simulateOffline) {
+      showToast('Aún no hay conexión a internet para sincronizar los registros.', 'alert');
+      return;
+    }
+    const count = offlineQueue.length;
+    setRecentCheckins((prev) =>
+      prev.map((c) => (c.estado === 'OFFLINE_PENDIENTE' ? { ...c, estado: 'VALIDADO' } : c))
+    );
+    setOfflineQueue([]);
+    showToast(`Sincronización diferida exitosa: ${count} asistencia(s) enviadas al servidor.`);
+  };
+
+  // Descargar Pase Liviano Offline / Wallet para acceso rápido sin internet
+  const handleDownloadOfflinePass = (cred) => {
+    if (!cred) return;
+    const htmlPass = `<!DOCTYPE html>
+<html lang="es"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Pase Oficial ULEAM - ${cred.participante}</title>
+<style>
+  body{font-family:system-ui,-apple-system,sans-serif;background:#0F172A;color:#F8FAFC;display:flex;justify-content:center;align-items:center;min-height:100vh;margin:0;padding:16px}
+  .pass{background:#FFFFFF;color:#0F172A;border-radius:16px;max-width:380px;width:100%;overflow:hidden;box-shadow:0 20px 40px rgba(0,0,0,0.4)}
+  .hdr{background:#002F6C;color:#FFF;padding:20px;text-align:center}
+  .hdr h2{margin:0;font-size:1.1rem;letter-spacing:0.04em}
+  .hdr p{margin:4px 0 0;font-size:0.78rem;opacity:0.85}
+  .bdy{padding:24px;text-align:center}
+  .tag{display:inline-block;background:#DCFCE7;color:#166534;padding:4px 12px;border-radius:99px;font-size:0.75rem;font-weight:700;margin-bottom:14px}
+  .qr{background:#F8FAFC;border:1px solid #E2E8F0;border-radius:12px;padding:16px;display:inline-block;margin:10px 0}
+  .meta{text-align:left;background:#F1F5F9;padding:14px;border-radius:10px;font-size:0.82rem;margin-top:16px;line-height:1.5}
+  .ftr{padding:12px 20px;background:#F8FAFC;border-top:1px dashed #CBD5E1;font-size:0.72rem;color:#64748B;text-align:center}
+</style></head><body>
+<div class="pass">
+  <div class="hdr"><h2>ULEAM EVENTOS — PASE OFICIAL</h2><p>${cred.evento}</p></div>
+  <div class="bdy">
+    <span class="tag">PASE OFFLINE VERIFICADO</span>
+    <div style="font-weight:800;font-size:1.15rem;color:#002F6C">${cred.participante}</div>
+    <div style="font-size:0.82rem;color:#475569;margin-bottom:12px">${cred.categoria}</div>
+    <div class="qr"><img src="https://api.qrserver.com/v1/create-qr-code/?size=180x180&data=${encodeURIComponent(cred.qr_token)}" alt="QR" width="180" height="180"></div>
+    <div style="font-family:monospace;font-size:0.8rem;color:#334155">${cred.qr_token}</div>
+    <div class="meta">
+      <div><strong>Identificación:</strong> ${cred.identificacion}</div>
+      <div><strong>Fecha Emisión:</strong> ${cred.fecha_emision}</div>
+      <div><strong>Uso:</strong> Válido en puerta sin conexión a internet</div>
+    </div>
+  </div>
+  <div class="ftr">Presenta este ticket guardado en tu dispositivo al ingresar al auditorio.</div>
+</div></body></html>`;
+    const blob = new Blob([htmlPass], { type: 'text/html;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `Pase_Offline_ULEAM_${cred.qr_token}.html`;
+    a.click();
+    URL.revokeObjectURL(url);
+    showToast('Pase liviano Offline descargado en tu dispositivo para acceso sin internet.');
+  };
+
+  // Subida de presentaciones en 2 fases (Ponente)
+  const handleUploadPonentePhase = (phase, fileNameInput) => {
+    const cleanName = (fileNameInput || '').trim() || (phase === 'borrador' ? 'Borrador_Ponencia_v1.pdf' : 'Presentacion_Final_ULEAM_2026.pptx');
+    setPonenteDeliverables((prev) => ({
+      ...prev,
+      [phase]: {
+        estado: 'COMPLETADO',
+        archivo: cleanName,
+        fecha: new Date().toLocaleString('es-EC'),
+      },
+    }));
+    setPonenteSelectedFile('');
+    showToast(`Entrega de ${phase === 'borrador' ? 'Fase 1 (Borrador)' : 'Fase 2 (Versión Final)'} registrada con éxito.`);
+  };
+
+  // Actualizar estado del cronograma en vivo (Ponente)
+  const handleUpdateScheduleStatus = (sessionId, newStatus) => {
+    setPonenteSchedule((prev) =>
+      prev.map((s) => (s.id === sessionId ? { ...s, estado: newStatus } : s))
+    );
+    showToast(`Estado de ponencia actualizado en vivo a: ${newStatus.replace('_', ' ')}`);
+  };
+
+  // Emitir dictamen de Par Académico / Revisor
+  const handleSubmitPaperReview = (e) => {
+    e.preventDefault();
+    const total = rubricScores.originalidad + rubricScores.metodologia + rubricScores.referencias + rubricScores.formato;
+    setRevisorPapers((prev) =>
+      prev.map((p) =>
+        p.id === selectedPaperId
+          ? {
+              ...p,
+              estado: 'EVALUADO',
+              dictamen: rubricVerdict,
+              puntajeTotal: total,
+              comentarioRevisor: rubricComment || 'Evaluación completada según rúbrica oficial del comité científico.',
+            }
+          : p
+      )
+    );
+    showToast(`Dictamen "${rubricVerdict.replace(/_/g, ' ')}" (${total}/20 pts) emitido para el manuscrito ${selectedPaperId}.`);
+  };
+
+  // Creación Real de Eventos conectada al Backend (.NET 9 / C#)
   const handleCreateEventSubmit = async (e) => {
     e.preventDefault();
     if (!newEventForm.nombre.trim()) {
@@ -1412,19 +1690,26 @@ export default function App() {
         });
       } else {
         const checkinName = scanInput.length === 10 ? `Participante C.I. ${scanInput}` : 'Karla Andrade Mendoza';
+        const offlineMode = simulateOffline || !isOnline;
+        const entryId = Date.now();
         setScanResult({
           exito: true,
-          mensaje: 'ACCESO CONCEDIDO',
+          mensaje: offlineMode ? 'ACCESO CONCEDIDO (COLA OFFLINE)' : 'ACCESO CONCEDIDO',
           participante: checkinName,
           categoria: 'Estudiante ULEAM (Beca 100%)',
           institucion: 'ULEAM - Ingeniería en Software',
           hora: new Date().toLocaleTimeString('es-EC'),
         });
         setRecentCheckins([
-          { id: Date.now(), nombre: checkinName, tiempo: 'Justo ahora', estado: 'VALIDADO' },
+          { id: entryId, nombre: checkinName, tiempo: 'Justo ahora', estado: offlineMode ? 'OFFLINE_PENDIENTE' : 'VALIDADO' },
           ...recentCheckins,
         ]);
-        showToast(`Acceso registrado: ${checkinName}`);
+        if (offlineMode) {
+          setOfflineQueue((prev) => [...prev, { id: entryId, code: scanInput, nombre: checkinName, hora: new Date().toISOString() }]);
+          showToast(`Acceso guardado en cola offline: ${checkinName}`);
+        } else {
+          showToast(`Acceso registrado: ${checkinName}`);
+        }
       }
     }
     setScanInput('');
@@ -2174,6 +2459,20 @@ export default function App() {
               <span className="material-symbols-outlined" style={{ fontSize: '16px' }}>qr_code_scanner</span>
               Personal Asistencia (QR)
             </button>
+            <button
+              className={`role-pill-btn ${currentRole === 'PONENTE' ? 'active' : ''}`}
+              onClick={() => { setCurrentRole('PONENTE'); navigateTo('ponente_portal', '/ponente'); }}
+            >
+              <span className="material-symbols-outlined" style={{ fontSize: '16px' }}>co_present</span>
+              Portal Ponente
+            </button>
+            <button
+              className={`role-pill-btn ${currentRole === 'REVISOR' ? 'active' : ''}`}
+              onClick={() => { setCurrentRole('REVISOR'); navigateTo('revisor_portal', '/revisor'); }}
+            >
+              <span className="material-symbols-outlined" style={{ fontSize: '16px' }}>rate_review</span>
+              Par Académico
+            </button>
           </div>
         </div>
       </div>
@@ -2296,6 +2595,42 @@ export default function App() {
                   onClick={() => navigateTo('checkin_staff', '/checkin')}
                 >
                   <span className="material-symbols-outlined">qr_code_scanner</span> Escáner Puerta (QR)
+                </button>
+                <button
+                  className="btn btn-outline btn-sm"
+                  onClick={() => navigateTo('explorar', '/explorar')}
+                >
+                  <span className="material-symbols-outlined">explore</span> Catálogo
+                </button>
+              </>
+            )}
+
+            {currentRole === 'PONENTE' && (
+              <>
+                <button
+                  className={`btn btn-sm ${currentView === 'ponente_portal' ? 'btn-primary' : 'btn-outline'}`}
+                  style={{ display: 'flex', alignItems: 'center', gap: '6px' }}
+                  onClick={() => navigateTo('ponente_portal', '/ponente')}
+                >
+                  <span className="material-symbols-outlined">co_present</span> Mi Portal Ponente
+                </button>
+                <button
+                  className="btn btn-outline btn-sm"
+                  onClick={() => navigateTo('explorar', '/explorar')}
+                >
+                  <span className="material-symbols-outlined">explore</span> Catálogo
+                </button>
+              </>
+            )}
+
+            {currentRole === 'REVISOR' && (
+              <>
+                <button
+                  className={`btn btn-sm ${currentView === 'revisor_portal' ? 'btn-primary' : 'btn-outline'}`}
+                  style={{ display: 'flex', alignItems: 'center', gap: '6px' }}
+                  onClick={() => navigateTo('revisor_portal', '/revisor')}
+                >
+                  <span className="material-symbols-outlined">rate_review</span> Revisión por Pares
                 </button>
                 <button
                   className="btn btn-outline btn-sm"
@@ -2548,6 +2883,26 @@ export default function App() {
                 <span className="material-symbols-outlined">qr_code_scanner</span>
                 <span>Staff QR</span>
               </button>
+              <button
+                className={`drawer-role-btn ${currentRole === 'PONENTE' ? 'active' : ''}`}
+                onClick={() => {
+                  setCurrentRole('PONENTE');
+                  navigateTo('ponente_portal', '/ponente');
+                }}
+              >
+                <span className="material-symbols-outlined">co_present</span>
+                <span>Ponente</span>
+              </button>
+              <button
+                className={`drawer-role-btn ${currentRole === 'REVISOR' ? 'active' : ''}`}
+                onClick={() => {
+                  setCurrentRole('REVISOR');
+                  navigateTo('revisor_portal', '/revisor');
+                }}
+              >
+                <span className="material-symbols-outlined">rate_review</span>
+                <span>Par Académico</span>
+              </button>
             </div>
           </div>
 
@@ -2632,6 +2987,26 @@ export default function App() {
                 >
                   <span className="material-symbols-outlined">qr_code_scanner</span>
                   <span>Escáner de Asistencia QR</span>
+                </button>
+              )}
+
+              {currentRole === 'PONENTE' && (
+                <button
+                  className={`drawer-nav-item ${currentView === 'ponente_portal' ? 'active' : ''}`}
+                  onClick={() => navigateTo('ponente_portal', '/ponente')}
+                >
+                  <span className="material-symbols-outlined">co_present</span>
+                  <span>Mi Portal Ponente</span>
+                </button>
+              )}
+
+              {currentRole === 'REVISOR' && (
+                <button
+                  className={`drawer-nav-item ${currentView === 'revisor_portal' ? 'active' : ''}`}
+                  onClick={() => navigateTo('revisor_portal', '/revisor')}
+                >
+                  <span className="material-symbols-outlined">rate_review</span>
+                  <span>Revisión por Pares</span>
                 </button>
               )}
             </nav>
@@ -4120,10 +4495,40 @@ export default function App() {
       {/* ============================================================== */}
       {currentView === 'checkin_staff' && (
         <main className="main-container" style={{ padding: '40px 24px' }}>
-          <div style={{ marginBottom: '28px' }}>
-            <span className="chip chip-urgent" style={{ marginBottom: '8px' }}>Control de Puerta Activo (PC / Móvil)</span>
-            <h2 className="headline-large">Validación de Asistencia en Tiempo Real</h2>
-            <p className="body-regular">Escanea la credencial QR mediante cámara en vivo, sube una foto del código o digita la cédula.</p>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: '16px', marginBottom: '28px' }}>
+            <div>
+              <span className="chip chip-urgent" style={{ marginBottom: '8px' }}>Control de Puerta Activo (PC / Móvil)</span>
+              <h2 className="headline-large">Validación de Asistencia en Tiempo Real</h2>
+              <p className="body-regular">Escanea la credencial QR mediante cámara en vivo, sube una foto del código o digita la cédula.</p>
+            </div>
+
+            {/* Barra de Contingencia Offline (Sincronización Diferida) */}
+            <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap', background: '#FFFFFF', padding: '12px 16px', borderRadius: 'var(--radius-lg)', boxShadow: 'var(--shadow-level-1)', border: simulateOffline || !isOnline ? '1.5px solid var(--color-alert)' : '1px solid rgba(0, 47, 108, 0.1)' }}>
+              <span className={`chip ${simulateOffline || !isOnline ? 'chip-alert' : 'chip-success'}`} style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                <span className="material-symbols-outlined" style={{ fontSize: '16px' }}>
+                  {simulateOffline || !isOnline ? 'wifi_off' : 'wifi'}
+                </span>
+                {simulateOffline || !isOnline ? 'Modo Offline Activo' : 'Red En Línea'}
+              </span>
+              <button
+                type="button"
+                className="btn btn-outline btn-sm"
+                onClick={() => setSimulateOffline((prev) => !prev)}
+                title="Simular pérdida de conectividad Wi-Fi en puerta"
+              >
+                {simulateOffline ? 'Restaurar Conexión' : 'Simular Corte de Red'}
+              </button>
+              {offlineQueue.length > 0 && (
+                <button
+                  type="button"
+                  className="btn btn-primary btn-sm"
+                  onClick={handleSyncOfflineQueue}
+                >
+                  <span className="material-symbols-outlined">sync</span>
+                  Sincronizar Cola ({offlineQueue.length})
+                </button>
+              )}
+            </div>
           </div>
 
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 320px), 1fr))', gap: '30px' }}>
@@ -4576,6 +4981,345 @@ export default function App() {
           </div>
         </main>
       )}
+
+      {/* ============================================================== */}
+      {/* VISTA 6B: PORTAL DEL PONENTE (CRONOGRAMA Y ENTREGA EN 2 FASES) */}
+      {/* ============================================================== */}
+      {currentView === 'ponente_portal' && (
+        <main className="main-container" style={{ padding: '40px 24px' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: '16px', marginBottom: '28px' }}>
+            <div>
+              <span className="chip chip-primary" style={{ marginBottom: '8px' }}>Expositor Oficial — ULEAM Eventos</span>
+              <h2 className="headline-large">Portal del Ponente e Intervenciones</h2>
+              <p className="body-regular">
+                Consulta el orden del día en tiempo real, gestiona tus diapositivas en dos fases y descarga tu certificado inmediato.
+              </p>
+            </div>
+            <button
+              className="btn btn-primary btn-sm"
+              style={{ display: 'flex', alignItems: 'center', gap: '6px' }}
+              onClick={handleDownloadCertPDF}
+            >
+              <span className="material-symbols-outlined">workspace_premium</span> Descargar Certificado de Ponente
+            </button>
+          </div>
+
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 340px), 1fr))', gap: '28px' }}>
+            {/* Columna Izquierda: Cronograma Interactivo en Vivo */}
+            <div style={{ background: '#FFFFFF', padding: '26px', borderRadius: 'var(--radius-xl)', boxShadow: 'var(--shadow-level-1)' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '18px' }}>
+                <h3 style={{ fontSize: '1.15rem', color: 'var(--primary-dark)', margin: 0, display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  <span className="material-symbols-outlined">schedule</span>
+                  Cronograma en Vivo del Día
+                </h3>
+                <span className="chip chip-success" style={{ fontSize: '0.72rem' }}>Sincronizado en tiempo real</span>
+              </div>
+
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
+                {ponenteSchedule.map((item) => (
+                  <div
+                    key={item.id}
+                    style={{
+                      padding: '16px',
+                      borderRadius: 'var(--radius-md)',
+                      background: item.estado === 'EN_CURSO' ? 'rgba(0, 47, 108, 0.04)' : 'var(--surface-bg)',
+                      borderLeft: `4px solid ${
+                        item.estado === 'EN_CURSO' ? 'var(--primary-container)' :
+                        item.estado === 'SIGUIENTE' ? 'var(--color-success)' :
+                        item.estado === 'RETRASADO' ? 'var(--color-urgent)' : '#94A3B8'
+                      }`,
+                    }}
+                  >
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '8px', marginBottom: '6px' }}>
+                      <span style={{ fontSize: '0.8rem', fontWeight: 700, color: 'var(--primary-dark)' }}>
+                        {item.hora} ({item.duracion}) — {item.sala}
+                      </span>
+                      <span
+                        className={`chip ${
+                          item.estado === 'EN_CURSO' ? 'chip-primary' :
+                          item.estado === 'SIGUIENTE' ? 'chip-success' :
+                          item.estado === 'RETRASADO' ? 'chip-urgent' : 'chip-alert'
+                        }`}
+                        style={{ fontSize: '0.7rem' }}
+                      >
+                        {item.estado.replace('_', ' ')}
+                      </span>
+                    </div>
+                    <strong style={{ display: 'block', fontSize: '0.96rem', color: 'var(--primary-dark)', marginBottom: '4px' }}>
+                      {item.titulo}
+                    </strong>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '8px', marginTop: '8px' }}>
+                      <span style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>{item.ponente}</span>
+                      <select
+                        className="input-control"
+                        style={{ width: 'auto', padding: '4px 8px', fontSize: '0.75rem' }}
+                        value={item.estado}
+                        onChange={(e) => handleUpdateScheduleStatus(item.id, e.target.value)}
+                      >
+                        <option value="FINALIZADO">Finalizado</option>
+                        <option value="EN_CURSO">En Curso</option>
+                        <option value="SIGUIENTE">Siguiente</option>
+                        <option value="RETRASADO">Retrasado</option>
+                      </select>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            {/* Columna Derecha: Entrega en 2 Fases + Plantillas Oficiales */}
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '24px' }}>
+              <div style={{ background: '#FFFFFF', padding: '26px', borderRadius: 'var(--radius-xl)', boxShadow: 'var(--shadow-level-1)' }}>
+                <h3 style={{ fontSize: '1.15rem', color: 'var(--primary-dark)', marginBottom: '8px', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  <span className="material-symbols-outlined">upload_file</span>
+                  Entrega de Diapositivas en Dos Fases
+                </h3>
+                <p className="body-regular" style={{ fontSize: '0.85rem', marginBottom: '18px' }}>
+                  Sube un borrador preliminar días antes para revisión técnica y carga tu versión definitiva hasta 24 horas antes de exponer.
+                </p>
+
+                {/* Fase 1: Borrador Preliminar */}
+                <div style={{ padding: '14px', borderRadius: 'var(--radius-md)', border: '1px solid #E2E8F0', marginBottom: '14px' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '6px' }}>
+                    <strong style={{ fontSize: '0.9rem', color: 'var(--primary-dark)' }}>Fase 1: Borrador Preliminar</strong>
+                    <span className="chip chip-success" style={{ fontSize: '0.72rem' }}>{ponenteDeliverables.borrador.estado}</span>
+                  </div>
+                  <p style={{ fontSize: '0.8rem', color: 'var(--text-muted)', margin: 0 }}>
+                    Archivo: <strong>{ponenteDeliverables.borrador.archivo}</strong> ({ponenteDeliverables.borrador.fecha})
+                  </p>
+                </div>
+
+                {/* Fase 2: Versión Final Definitiva */}
+                <div style={{ padding: '16px', borderRadius: 'var(--radius-md)', border: '1px solid var(--primary-container)', background: 'rgba(0, 47, 108, 0.02)' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '10px' }}>
+                    <strong style={{ fontSize: '0.9rem', color: 'var(--primary-dark)' }}>Fase 2: Versión Final Definitiva (24h antes)</strong>
+                    <span className={`chip ${ponenteDeliverables.final.estado === 'COMPLETADO' ? 'chip-success' : 'chip-alert'}`} style={{ fontSize: '0.72rem' }}>
+                      {ponenteDeliverables.final.estado}
+                    </span>
+                  </div>
+                  {ponenteDeliverables.final.estado === 'COMPLETADO' ? (
+                    <p style={{ fontSize: '0.82rem', color: 'var(--color-success)', fontWeight: 600, margin: '0 0 10px' }}>
+                      Archivo definitivo cargado: {ponenteDeliverables.final.archivo} ({ponenteDeliverables.final.fecha})
+                    </p>
+                  ) : (
+                    <p style={{ fontSize: '0.8rem', color: 'var(--text-muted)', margin: '0 0 10px' }}>
+                      Adjunta tus diapositivas actualizadas (.pptx o .pdf) para el equipo audiovisual del auditorio.
+                    </p>
+                  )}
+                  <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+                    <input
+                      type="text"
+                      className="input-control"
+                      style={{ flex: 1, fontSize: '0.82rem' }}
+                      placeholder="Nombre del archivo (ej: Slides_Final_IA_2026.pptx)"
+                      value={ponenteSelectedFile}
+                      onChange={(e) => setPonenteSelectedFile(e.target.value)}
+                    />
+                    <button
+                      type="button"
+                      className="btn btn-primary btn-sm"
+                      onClick={() => handleUploadPonentePhase('final', ponenteSelectedFile)}
+                    >
+                      <span className="material-symbols-outlined">cloud_upload</span> Subir Final
+                    </button>
+                  </div>
+                </div>
+              </div>
+
+              {/* Zona de Plantillas Oficiales */}
+              <div style={{ background: '#FFFFFF', padding: '24px', borderRadius: 'var(--radius-xl)', boxShadow: 'var(--shadow-level-1)' }}>
+                <h3 style={{ fontSize: '1.08rem', color: 'var(--primary-dark)', marginBottom: '10px', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  <span className="material-symbols-outlined">folder_zip</span>
+                  Zona de Plantillas Oficiales del Congreso
+                </h3>
+                <p className="body-regular" style={{ fontSize: '0.82rem', marginBottom: '14px' }}>
+                  Descarga los formatos institucionales ULEAM aprobados con antelación para adaptar el diseño de tu ponencia.
+                </p>
+                <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
+                  <button
+                    type="button"
+                    className="btn btn-outline btn-sm"
+                    onClick={() => showToast('Descargando Plantilla Oficial de Diapositivas ULEAM 2026 (.pptx)...')}
+                  >
+                    <span className="material-symbols-outlined">slideshow</span> Plantilla PowerPoint (.PPTX)
+                  </button>
+                  <button
+                    type="button"
+                    className="btn btn-outline btn-sm"
+                    onClick={() => showToast('Descargando Guía de Estilo y Tiempos de Exposición (.pdf)...')}
+                  >
+                    <span className="material-symbols-outlined">description</span> Guía del Expositor (.PDF)
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </main>
+      )}
+
+      {/* ============================================================== */}
+      {/* VISTA 6C: PAR ACADÉMICO / REVISOR (DOBLE CIEGO Y RÚBRICA)      */}
+      {/* ============================================================== */}
+      {currentView === 'revisor_portal' && (() => {
+        const activePaper = revisorPapers.find((p) => p.id === selectedPaperId) || revisorPapers[0];
+        const totalScore = rubricScores.originalidad + rubricScores.metodologia + rubricScores.referencias + rubricScores.formato;
+        return (
+          <main className="main-container" style={{ padding: '40px 24px' }}>
+            <div style={{ marginBottom: '26px' }}>
+              <span className="chip chip-alert" style={{ marginBottom: '8px' }}>Evaluación Científica — Doble Ciego</span>
+              <h2 className="headline-large">Panel de Revisión por Pares Académicos</h2>
+              <p className="body-regular">
+                Evalúa manuscritos asignados con visor integrado, verificación bibliográfica y rúbrica oficial lateral en una sola interfaz.
+              </p>
+            </div>
+
+            {/* Selector Superior de Artículos Asignados */}
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(260px, 1fr))', gap: '16px', marginBottom: '26px' }}>
+              {revisorPapers.map((paper) => (
+                <div
+                  key={paper.id}
+                  onClick={() => setSelectedPaperId(paper.id)}
+                  style={{
+                    background: '#FFFFFF',
+                    padding: '18px',
+                    borderRadius: 'var(--radius-lg)',
+                    boxShadow: 'var(--shadow-level-1)',
+                    cursor: 'pointer',
+                    border: activePaper.id === paper.id ? '2px solid var(--primary-container)' : '1px solid #E2E8F0',
+                  }}
+                >
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
+                    <span style={{ fontSize: '0.76rem', fontWeight: 700, color: 'var(--text-muted)' }}>{paper.id}</span>
+                    <span className={`chip ${paper.estado === 'EVALUADO' ? 'chip-success' : paper.sla === 'POR_VENCER' ? 'chip-urgent' : 'chip-alert'}`} style={{ fontSize: '0.7rem' }}>
+                      {paper.estado === 'EVALUADO' ? `${paper.dictamen} (${paper.puntajeTotal}/20)` : paper.fechaLimite}
+                    </span>
+                  </div>
+                  <strong style={{ display: 'block', fontSize: '0.9rem', color: 'var(--primary-dark)', lineHeight: 1.35 }}>
+                    {paper.titulo}
+                  </strong>
+                  <span style={{ display: 'block', fontSize: '0.76rem', color: 'var(--text-muted)', marginTop: '6px' }}>
+                    {paper.autorAnonimo}
+                  </span>
+                </div>
+              ))}
+            </div>
+
+            {/* Pantalla Dividida: Visor de Manuscrito (Izquierda) + Rúbrica Lateral (Derecha) */}
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 360px), 1fr))', gap: '28px', alignItems: 'start' }}>
+              {/* Visor del Manuscrito */}
+              <div style={{ background: '#FFFFFF', padding: '28px', borderRadius: 'var(--radius-xl)', boxShadow: 'var(--shadow-level-1)' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '8px', marginBottom: '14px', paddingBottom: '12px', borderBottom: '1px solid #E2E8F0' }}>
+                  <span className="chip chip-primary" style={{ fontSize: '0.74rem' }}>{activePaper.linea}</span>
+                  <span className="chip chip-success" style={{ fontSize: '0.74rem' }}>
+                    Compilatio Antiplagio: {activePaper.similitudCompilatio}
+                  </span>
+                </div>
+
+                <h3 style={{ fontSize: '1.22rem', color: 'var(--primary-dark)', marginBottom: '14px', lineHeight: 1.35 }}>
+                  {activePaper.titulo}
+                </h3>
+
+                <div style={{ marginBottom: '18px' }}>
+                  <strong style={{ display: 'block', fontSize: '0.85rem', color: 'var(--primary-dark)', marginBottom: '6px', textTransform: 'uppercase' }}>
+                    Resumen (Abstract)
+                  </strong>
+                  <p className="body-regular" style={{ fontSize: '0.9rem', lineHeight: 1.6, background: 'var(--surface-bg)', padding: '14px', borderRadius: 'var(--radius-md)' }}>
+                    {activePaper.abstract}
+                  </p>
+                </div>
+
+                <div style={{ marginBottom: '18px' }}>
+                  <strong style={{ display: 'block', fontSize: '0.85rem', color: 'var(--primary-dark)', marginBottom: '6px', textTransform: 'uppercase' }}>
+                    Diseño Metodológico
+                  </strong>
+                  <p className="body-regular" style={{ fontSize: '0.9rem', lineHeight: 1.6 }}>
+                    {activePaper.metodologia}
+                  </p>
+                </div>
+
+                <div>
+                  <strong style={{ display: 'block', fontSize: '0.85rem', color: 'var(--primary-dark)', marginBottom: '8px', textTransform: 'uppercase' }}>
+                    Referencias Bibliográficas Verificadas (Mendeley)
+                  </strong>
+                  <ul style={{ margin: 0, paddingLeft: '18px', fontSize: '0.84rem', color: 'var(--text-muted)', lineHeight: 1.6 }}>
+                    {activePaper.referencias.map((ref, idx) => (
+                      <li key={idx}>{ref}</li>
+                    ))}
+                  </ul>
+                </div>
+              </div>
+
+              {/* Rúbrica Oficial de Evaluación Lateral */}
+              <form onSubmit={handleSubmitPaperReview} style={{ background: '#FFFFFF', padding: '28px', borderRadius: 'var(--radius-xl)', boxShadow: 'var(--shadow-level-1)' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '18px' }}>
+                  <h3 style={{ fontSize: '1.15rem', color: 'var(--primary-dark)', margin: 0, display: 'flex', alignItems: 'center', gap: '8px' }}>
+                    <span className="material-symbols-outlined">grading</span>
+                    Rúbrica Oficial de Evaluación
+                  </h3>
+                  <span style={{ fontSize: '1.2rem', fontWeight: 800, color: 'var(--primary-container)' }}>
+                    {totalScore} / 20 pts
+                  </span>
+                </div>
+
+                {[
+                  { key: 'originalidad', label: 'Originalidad y Aporte Científico' },
+                  { key: 'metodologia', label: 'Rigor Metodológico y Validación' },
+                  { key: 'referencias', label: 'Consistencia de Citas Bibliográficas' },
+                  { key: 'formato', label: 'Cumplimiento de Formato ULEAM' },
+                ].map((crit) => (
+                  <div key={crit.key} style={{ marginBottom: '14px' }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.84rem', fontWeight: 600, marginBottom: '4px' }}>
+                      <span>{crit.label}</span>
+                      <span style={{ color: 'var(--primary-dark)' }}>{rubricScores[crit.key]} / 5</span>
+                    </div>
+                    <input
+                      type="range"
+                      min="1"
+                      max="5"
+                      value={rubricScores[crit.key]}
+                      onChange={(e) => setRubricScores({ ...rubricScores, [crit.key]: parseInt(e.target.value, 10) })}
+                      style={{ width: '100%', accentColor: 'var(--primary-container)', cursor: 'pointer' }}
+                    />
+                  </div>
+                ))}
+
+                <div style={{ marginBottom: '14px' }}>
+                  <label style={{ display: 'block', fontSize: '0.84rem', fontWeight: 600, marginBottom: '6px' }}>
+                    Observaciones Técnicas para el Autor:
+                  </label>
+                  <textarea
+                    className="input-control"
+                    rows="3"
+                    placeholder="Detalle correcciones metodológicas, sugerencias de formato o comentarios de mejora..."
+                    value={rubricComment}
+                    onChange={(e) => setRubricComment(e.target.value)}
+                  />
+                </div>
+
+                <div style={{ marginBottom: '20px' }}>
+                  <label style={{ display: 'block', fontSize: '0.84rem', fontWeight: 600, marginBottom: '6px' }}>
+                    Dictamen Oficial del Par Evaluador:
+                  </label>
+                  <select
+                    className="input-control"
+                    value={rubricVerdict}
+                    onChange={(e) => setRubricVerdict(e.target.value)}
+                  >
+                    <option value="APROBADO">Aprobado para Publicación / Ponencia</option>
+                    <option value="APROBADO_CON_CORRECCIONES">Aprobado con Correcciones Menores</option>
+                    <option value="RECHAZADO">No Aprobado / Rechazado</option>
+                  </select>
+                </div>
+
+                <button type="submit" className="btn btn-primary" style={{ width: '100%', display: 'flex', justifyContent: 'center', gap: '8px' }}>
+                  <span className="material-symbols-outlined">task_alt</span>
+                  Emitir Dictamen Oficial
+                </button>
+              </form>
+            </div>
+          </main>
+        );
+      })()}
 
       {/* ============================================================== */}
       {/* VISTA 7: PANTALLA DE ERROR 404 (RECURSO O RUTA NO ENCONTRADA)   */}
@@ -5749,6 +6493,14 @@ export default function App() {
                 onClick={() => window.print()}
               >
                 <span className="material-symbols-outlined">print</span> Imprimir Gafete
+              </button>
+              <button
+                className="btn btn-outline btn-sm"
+                style={{ flex: '1 1 120px' }}
+                onClick={() => handleDownloadOfflinePass(activeCredential)}
+                title="Descargar ticket liviano HTML para abrir en el celular sin internet"
+              >
+                <span className="material-symbols-outlined">wallet</span> Pase Offline
               </button>
               <button
                 className="btn btn-primary btn-sm"
